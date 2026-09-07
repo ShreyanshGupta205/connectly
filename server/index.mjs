@@ -50,7 +50,8 @@ let memoryProfiles = {
       { id: 'link-yt', platform: 'youtube', title: 'YouTube Channel', subtitle: '@shreyanshbuild • AI Tutorials & Project Demos', url: 'https://youtube.com/@shreyanshbuild', position: 2, isVisible: true, clicks: 2450, featured: true },
       { id: 'link-gh', platform: 'github', title: 'GitHub Repositories', subtitle: 'ShreyanshGupta205 • Open-source AI & Web Apps', url: 'https://github.com/ShreyanshGupta205', position: 3, isVisible: true, clicks: 1820, featured: false },
       { id: 'link-li', platform: 'linkedin', title: 'LinkedIn Network', subtitle: '/in/shreyanshgupta205 • Let\'s connect professionally', url: 'https://www.linkedin.com/in/shreyanshgupta205/', position: 4, isVisible: true, clicks: 1240, featured: false },
-      { id: 'link-ig', platform: 'instagram', title: 'Instagram', subtitle: '@shreyanshg2005 • Behind the scenes & tech updates', url: 'https://www.instagram.com/shreyanshg2005/', position: 5, isVisible: true, clicks: 1120, featured: false },
+      { id: 'link-x', platform: 'x', title: 'X / Twitter', subtitle: '@Shreyanshg205 • Tech thoughts & AI drops', url: 'https://x.com/Shreyanshg205', position: 5, isVisible: true, clicks: 980, featured: false },
+      { id: 'link-ig', platform: 'instagram', title: 'Instagram', subtitle: '@shreyanshg2005 • Behind the scenes & tech updates', url: 'https://www.instagram.com/shreyanshg2005/', position: 6, isVisible: true, clicks: 1120, featured: false },
     ],
   }
 };
