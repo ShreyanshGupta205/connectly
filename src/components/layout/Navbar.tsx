@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { 
   ChevronDown, 
-  Check, 
   ArrowRight, 
   Layers, 
   QrCode, 
@@ -22,7 +21,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ currentRoute, navigateTo, onOpenCommand }) => {
-  const { currentProfile, profiles, switchProfile, resetToDemo, currentUser, logout, isAdmin } = useProfile();
+  const { currentProfile, currentUser, logout, isAdmin } = useProfile();
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const isLanding = currentRoute === 'landing';
@@ -124,116 +123,117 @@ export const Navbar: React.FC<NavbarProps> = ({ currentRoute, navigateTo, onOpen
               </button>
             )}
 
-            {/* Google Sign In / Sync CTA */}
-            <button
-              onClick={() => setAuthModalOpen(true)}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-white text-xs font-bold transition-all hover:scale-105 active:scale-95"
-            >
-              <GoogleIcon className="w-4 h-4" />
-              <span className="hidden sm:inline">
-                {currentUser?.email ? 'Google Synced' : 'Sign in with Google'}
-              </span>
-            </button>
-
-            {/* Profile Switcher & Actions */}
-            <div className="relative">
+            {/* If NOT logged in: Prominent "Sign in with Google" button */}
+            {!currentUser ? (
               <button
-                onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                className="flex items-center gap-2 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.08] transition-all text-xs text-slate-200"
+                onClick={() => setAuthModalOpen(true)}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-950 text-xs font-bold transition-all shadow-md hover:scale-105 active:scale-95"
               >
-                <img
-                  src={currentProfile.avatarUrl}
-                  alt={currentProfile.name}
-                  className="w-6 h-6 rounded-full object-cover ring-1 ring-indigo-500/40"
-                />
-                <span className="hidden sm:inline font-medium max-w-[90px] truncate">
-                  @{currentProfile.username}
-                </span>
-                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${profileDropdownOpen ? 'rotate-180' : ''}`} />
+                <GoogleIcon className="w-4 h-4" />
+                <span>Sign in with Google</span>
               </button>
-
-              {profileDropdownOpen && (
-                <div
-                  className="absolute right-0 mt-2 w-64 rounded-2xl bg-slate-900 border border-white/15 shadow-2xl shadow-black/80 p-2 z-50 backdrop-blur-2xl"
-                  onClick={() => setProfileDropdownOpen(false)}
+            ) : (
+              /* If logged in: User Account Menu (Exclusively for this logged-in account) */
+              <div className="relative">
+                <button
+                  onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+                  className="flex items-center gap-2 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.08] transition-all text-xs text-slate-200"
                 >
-                  <div className="px-3 py-2 border-b border-white/[0.07] mb-1 flex items-center justify-between">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Profiles</p>
-                    {currentUser?.email && (
-                      <span className="text-[10px] text-emerald-400 font-semibold truncate max-w-[120px]">
-                        {currentUser.email}
-                      </span>
-                    )}
-                  </div>
-                  {Object.values(profiles).map(p => (
-                    <button
-                      key={p.username}
-                      onClick={() => switchProfile(p.username)}
-                      className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-all text-xs ${
-                        p.username === currentProfile.username
-                          ? 'bg-indigo-600/20 text-indigo-200 border border-indigo-500/25 font-semibold'
-                          : 'hover:bg-white/5 text-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <img src={p.avatarUrl} alt={p.name} className="w-7 h-7 rounded-full object-cover ring-1 ring-white/10" />
-                        <div className="truncate">
-                          <p className="font-semibold text-slate-100 truncate text-[12px]">{p.name}</p>
-                          <p className="text-[10px] text-slate-400 truncate">@{p.username}</p>
-                        </div>
+                  <img
+                    src={currentUser.avatarUrl || currentProfile.avatarUrl}
+                    alt={currentUser.name}
+                    className="w-6 h-6 rounded-full object-cover ring-1 ring-indigo-500/40"
+                  />
+                  <span className="hidden sm:inline font-medium max-w-[100px] truncate">
+                    @{currentUser.username}
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${profileDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {profileDropdownOpen && (
+                  <div
+                    className="absolute right-0 mt-2 w-64 rounded-2xl bg-slate-900 border border-white/15 shadow-2xl shadow-black/80 p-3 z-50 backdrop-blur-2xl"
+                    onClick={() => setProfileDropdownOpen(false)}
+                  >
+                    {/* Logged In User Card */}
+                    <div className="flex items-center gap-3 p-2 rounded-xl bg-white/[0.04] border border-white/[0.06] mb-2.5">
+                      <img
+                        src={currentUser.avatarUrl || currentProfile.avatarUrl}
+                        alt={currentUser.name}
+                        className="w-9 h-9 rounded-full object-cover ring-2 ring-indigo-500/40"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-xs text-white truncate">{currentUser.name}</p>
+                        <p className="text-[11px] text-indigo-300 font-mono truncate">@{currentUser.username}</p>
+                        <p className="text-[10px] text-slate-400 truncate">{currentUser.email}</p>
                       </div>
-                      {p.username === currentProfile.username && (
-                        <div className="w-4 h-4 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0">
-                          <Check className="w-2.5 h-2.5 text-white" />
-                        </div>
-                      )}
-                    </button>
-                  ))}
+                    </div>
 
-                  <div className="mt-2 pt-2 border-t border-white/[0.07] space-y-1">
-                    <button
-                      onClick={() => navigateTo('dashboard')}
-                      className="w-full text-left px-3 py-2 text-xs font-semibold text-indigo-300 hover:bg-indigo-600/10 rounded-xl transition-colors flex items-center justify-between"
-                    >
-                      <span>Open Creator Studio</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-
-                    {isAdmin && (
+                    {/* Account Shortcuts */}
+                    <div className="space-y-1">
                       <button
-                        onClick={() => navigateTo('admin')}
-                        className="w-full text-left px-3 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/10 rounded-xl transition-colors flex items-center justify-between"
+                        onClick={() => navigateTo('dashboard')}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-200 hover:text-white hover:bg-indigo-600/15 rounded-xl transition-colors flex items-center justify-between"
                       >
-                        <span className="flex items-center gap-1.5">
-                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Admin Control Panel</span>
+                        <span className="flex items-center gap-2">
+                          <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>My Creator Studio</span>
                         </span>
-                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">
-                          ROOT
-                        </span>
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
                       </button>
-                    )}
-                    
-                    {currentUser && (
+
+                      <button
+                        onClick={() => navigateTo(`@${currentUser.username}`)}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-200 hover:text-white hover:bg-white/5 rounded-xl transition-colors flex items-center justify-between"
+                      >
+                        <span className="flex items-center gap-2">
+                          <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                          <span>View My Live Profile</span>
+                        </span>
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
+                      </button>
+
+                      <button
+                        onClick={() => navigateTo(`poster-${currentUser.username}`)}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-200 hover:text-white hover:bg-white/5 rounded-xl transition-colors flex items-center justify-between"
+                      >
+                        <span className="flex items-center gap-2">
+                          <QrCode className="w-3.5 h-3.5 text-purple-400" />
+                          <span>Download QR Poster</span>
+                        </span>
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
+                      </button>
+
+                      {isAdmin && (
+                        <button
+                          onClick={() => navigateTo('admin')}
+                          className="w-full text-left px-3 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/10 rounded-xl transition-colors flex items-center justify-between"
+                        >
+                          <span className="flex items-center gap-2">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Admin Control Panel</span>
+                          </span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">
+                            ROOT
+                          </span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Sign Out Action */}
+                    <div className="mt-2 pt-2 border-t border-white/[0.07]">
                       <button
                         onClick={() => logout()}
-                        className="w-full text-left px-3 py-1.5 text-[11px] text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-xl transition-colors flex items-center gap-1.5"
+                        className="w-full text-left px-3 py-1.5 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-xl transition-colors flex items-center gap-2 font-medium"
                       >
-                        <LogOut className="w-3 h-3" />
+                        <LogOut className="w-3.5 h-3.5" />
                         <span>Sign Out</span>
                       </button>
-                    )}
-
-                    <button
-                      onClick={() => resetToDemo()}
-                      className="w-full text-left px-3 py-1.5 text-[11px] text-slate-500 hover:text-slate-200 hover:bg-white/5 rounded-xl transition-colors"
-                    >
-                      Clear Local Cache
-                    </button>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
 
             {/* Primary Action Button */}
             {isLanding ? (

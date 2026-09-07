@@ -25,7 +25,7 @@ interface CommandPaletteProps {
 
 interface CommandItem {
   id: string;
-  category: 'Actions' | 'Navigation' | 'Profiles';
+  category: 'Actions' | 'Navigation';
   title: string;
   subtitle?: string;
   icon: React.ReactNode;
@@ -38,7 +38,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onClose,
   navigateTo,
 }) => {
-  const { currentProfile, profiles, switchProfile } = useProfile();
+  const { currentProfile } = useProfile();
   const toast = useToast();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -185,25 +185,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         onClose();
       },
     },
-    // Profiles
-    ...Object.values(profiles).map(p => ({
-      id: `profile-${p.username}`,
-      category: 'Profiles' as const,
-      title: `Switch to ${p.name}`,
-      subtitle: `@${p.username} · ${p.category || 'Creator'}`,
-      icon: (
-        <img 
-          src={p.avatarUrl} 
-          alt={p.name} 
-          className="w-4 h-4 rounded-full object-cover ring-1 ring-white/20" 
-        />
-      ),
-      action: () => {
-        switchProfile(p.username);
-        toast.success(`Switched Profile to @${p.username}`);
-        onClose();
-      },
-    })),
   ];
 
   // Filter commands by search query
