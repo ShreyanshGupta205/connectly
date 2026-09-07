@@ -12,6 +12,8 @@ import {
 } from '../firebase/firestoreService';
 import { 
   signInWithGoogle, 
+  signInWithGoogleRedirect,
+  checkRedirectAuthResult,
   logoutUserFromFirebase, 
   onAuthListener 
 } from '../firebase/authService';
@@ -44,6 +46,7 @@ interface ProfileContextType {
   analytics: AnalyticsData;
   isCloudConnected: boolean;
   loginWithGoogle: () => Promise<boolean>;
+  loginWithGoogleRedirect: () => Promise<void>;
   updateCurrentProfile: (updates: Partial<UserProfile>) => void;
   updateAnyProfile: (username: string, updates: Partial<UserProfile>) => void;
   toggleVerification: (username: string) => void;
@@ -156,6 +159,23 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
       unsubscribe();
     };
   }, [currentUsername]);
+
+  // Check for returning redirect auth result (if sign in via redirect was used)
+  useEffect(() => {
+    checkRedirectAuthResult().then((authResult) => {
+      if (authResult) {
+        const { user, profile } = authResult;
+        setProfiles(prev => ({
+          ...prev,
+          [profile.username]: profile
+        }));
+        setCurrentUsername(profile.username);
+        setCurrentUser(user);
+      }
+    }).catch(err => {
+      console.warn('[Auth] Check redirect result error:', err);
+    });
+  }, []);
 
   // Listen to Firebase persistent Auth state
   useEffect(() => {
@@ -646,6 +666,15 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   };
 
+  const loginWithGoogleRedirect = async (): Promise<void> => {
+    try {
+      await signInWithGoogleRedirect();
+    } catch (error) {
+      console.error('[Auth] Error in loginWithGoogleRedirect:', error);
+      throw error;
+    }
+  };
+
   const logout = async () => {
     try {
       await logoutUserFromFirebase();
@@ -678,6 +707,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
         analytics,
         isCloudConnected,
         loginWithGoogle,
+        loginWithGoogleRedirect,
         updateCurrentProfile,
         updateAnyProfile,
         toggleVerification,

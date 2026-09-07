@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, Zap, ArrowRight, Loader2 } from 'lucide-react';
+import { X, ShieldCheck, Zap, ArrowRight, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
 import { useProfile } from '../../context/ProfileContext';
 import { useToast } from '../../context/ToastContext';
 import { BrandIcon } from './BrandLogo';
@@ -32,10 +32,12 @@ export const GoogleIcon: React.FC<{ className?: string }> = ({ className = "w-5 
 );
 
 export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const { loginWithGoogle } = useProfile();
+  const { loginWithGoogle, loginWithGoogleRedirect } = useProfile();
   const toast = useToast();
   const [loading, setLoading] = useState(false);
+  const [redirectLoading, setRedirectLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isPopupBlocked, setIsPopupBlocked] = useState(false);
 
   if (!isOpen) return null;
 
@@ -43,6 +45,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
     try {
       setLoading(true);
       setErrorMessage(null);
+      setIsPopupBlocked(false);
       const success = await loginWithGoogle();
       if (success) {
         toast.success('Signed in with Google!', 'Welcome to your Connectly Studio.');
@@ -51,14 +54,31 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
       }
     } catch (err: unknown) {
       const error = err as { message?: string; code?: string };
-      console.error(err);
-      if (error.code === 'auth/unauthorized-domain') {
+      console.error('[GoogleAuthModal] Error:', err);
+      if (error.code === 'auth/popup-blocked' || error.message?.includes('popup-blocked')) {
+        setIsPopupBlocked(true);
+        setErrorMessage(null);
+      } else if (error.code === 'auth/unauthorized-domain') {
         setErrorMessage('This domain is not yet authorized in Firebase Console. Please add localhost to Authorized Domains in Firebase Auth.');
       } else {
         setErrorMessage(error.message || 'Google sign-in could not be completed.');
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRedirectSignIn = async () => {
+    try {
+      setRedirectLoading(true);
+      setErrorMessage(null);
+      toast.info('Redirecting to Google...', 'You will be redirected back once signed in.');
+      await loginWithGoogleRedirect();
+    } catch (err: unknown) {
+      const error = err as { message?: string; code?: string };
+      console.error('[GoogleAuthModal] Redirect error:', err);
+      setErrorMessage(error.message || 'Could not initiate redirect sign-in.');
+      setRedirectLoading(false);
     }
   };
 
@@ -101,17 +121,59 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
           </div>
         )}
 
+        {/* Pop-up blocked recovery panel */}
+        {isPopupBlocked && (
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs space-y-3 animate-fade-in">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-amber-200">Browser Pop-up Blocked</h4>
+                <p className="mt-1 text-slate-300 leading-relaxed">
+                  Your browser or an ad-blocker prevented the Google sign-in pop-up from opening. You can sign in directly using a full-page redirect:
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleRedirectSignIn}
+              disabled={redirectLoading}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-all shadow-lg hover:scale-[1.01] active:scale-[0.99] disabled:opacity-60"
+            >
+              {redirectLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                  <span>Redirecting to Google...</span>
+                </>
+              ) : (
+                <>
+                  <ExternalLink className="w-4 h-4 text-slate-950" />
+                  <span>Sign In with Page Redirect (No Pop-ups)</span>
+                </>
+              )}
+            </button>
+
+            <div className="text-[11px] text-slate-400 space-y-1 pt-2 border-t border-amber-500/20">
+              <p className="font-medium text-slate-300">Or allow pop-ups in your browser:</p>
+              <ul className="list-disc list-inside space-y-0.5 text-slate-400">
+                <li>Look for the <span className="text-amber-300 font-medium">Pop-up blocked</span> icon in the address bar and choose <strong>Always allow</strong>.</li>
+                <li>If using Brave Shields or an ad-blocker, whitelist this site.</li>
+              </ul>
+            </div>
+          </div>
+        )}
+
         {/* Main Google Sign-In Button */}
         <div className="space-y-3">
           <button
             onClick={handleGoogleSignIn}
-            disabled={loading}
+            disabled={loading || redirectLoading}
             className="w-full flex items-center justify-center gap-3 py-3.5 px-5 rounded-2xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-sm shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {loading ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
-                <span>Connecting to Google...</span>
+                <span>Opening Google Sign-In...</span>
               </>
             ) : (
               <>
@@ -120,6 +182,20 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
               </>
             )}
           </button>
+
+          {!isPopupBlocked && (
+            <div className="text-center pt-1">
+              <button
+                type="button"
+                onClick={handleRedirectSignIn}
+                disabled={loading || redirectLoading}
+                className="text-xs text-slate-400 hover:text-indigo-300 transition-colors inline-flex items-center gap-1.5 underline underline-offset-4"
+              >
+                <ExternalLink className="w-3 h-3 text-slate-400" />
+                <span>Pop-ups blocked? Sign in via full-page redirect</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Perks / Security Trust Bullets */}
