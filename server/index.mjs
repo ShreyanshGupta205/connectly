@@ -567,8 +567,16 @@ app.get('/api/admin/export', (req, res) => {
   });
 });
 
-// Start Server & Initialize Database
-app.listen(PORT, async () => {
-  console.log(`🚀 Connectly Production Backend Server running on http://localhost:${PORT}`);
-  await initDatabase();
-});
+// Export app for Vercel Serverless Functions & testing
+export default app;
+
+// Start Server & Initialize Database (when running as standalone Node process)
+if (!process.env.VERCEL) {
+  app.listen(PORT, async () => {
+    console.log(`🚀 Connectly Production Backend Server running on http://localhost:${PORT}`);
+    await initDatabase();
+  });
+} else {
+  initDatabase().catch(err => console.error('Vercel DB Init Error:', err));
+}
+
