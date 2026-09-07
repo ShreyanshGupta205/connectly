@@ -65,7 +65,7 @@ interface ProfileContextType {
   exportAllData: () => string;
 }
 
-const STORAGE_KEY = 'connectly_profiles_v2';
+const STORAGE_KEY = 'connectly_profiles_v3';
 const AUTH_KEY = 'connectly_auth_user_v2';
 const LIKES_KEY = 'connectly_liked_profiles_v2';
 

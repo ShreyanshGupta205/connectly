@@ -228,25 +228,25 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ navigateTo }) => {
                     <p className="text-white font-bold text-sm tracking-tight">Shreyansh Gupta</p>
                     <p className="text-slate-400 text-[10px] font-medium">@shreyansh</p>
                     <p className="text-slate-400 text-[9px] leading-relaxed mt-1 px-1">
-                      AI Developer • Hackathon Builder<br />Building open-source AI products.
+                      AI Developer • IIT Madras<br />Top 0.6% Google Developers Hackathon
                     </p>
                   </div>
                 </div>
 
                 {/* Real link buttons inside phone */}
-                <div className="space-y-1.5 mt-3">
+                <div className="space-y-1.5 mt-2.5">
                   {[
+                    { label: 'The Times of India Feature', color: 'bg-amber-400' },
                     { label: 'YouTube Channel', color: 'bg-red-500' },
                     { label: 'GitHub Repositories', color: 'bg-slate-400' },
                     { label: 'LinkedIn Network', color: 'bg-blue-500' },
-                    { label: 'Instagram', color: 'bg-pink-500' },
                   ].map(({ label, color }) => (
                     <div
                       key={label}
-                      className="px-3 py-2 rounded-xl bg-white/[0.07] border border-white/[0.08] hover:bg-white/[0.12] flex items-center gap-2.5 transition-colors"
+                      className="px-3 py-1.5 rounded-xl bg-white/[0.07] border border-white/[0.08] hover:bg-white/[0.12] flex items-center gap-2.5 transition-colors"
                     >
                       <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${color}`} />
-                      <span className="text-white text-[11px] font-semibold flex-1 text-left">{label}</span>
+                      <span className="text-white text-[11px] font-semibold flex-1 text-left truncate">{label}</span>
                     </div>
                   ))}
                 </div>
