@@ -92,14 +92,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } catch (e) {
       console.error('Failed to parse auth user', e);
     }
-    return {
-      id: 'user-shreyansh',
-      email: ADMIN_EMAIL,
-      name: 'Shreyansh Gupta',
-      username: 'shreyansh',
-      avatarUrl: INITIAL_PROFILES.shreyansh.avatarUrl,
-      plan: 'pro',
-    };
+    return null;
   });
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
@@ -166,20 +159,98 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Listen to Firebase persistent Auth state
   useEffect(() => {
-    const unsubAuth = onAuthListener((fbUser) => {
+    const unsubAuth = onAuthListener(async (fbUser) => {
       if (fbUser) {
+        const isShreyanshAdmin = fbUser.email?.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase();
         const emailPrefix = fbUser.email ? fbUser.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '') : '';
         const cleanName = fbUser.displayName || emailPrefix || 'Creator';
-        const cleanUsername = emailPrefix || ('user_' + fbUser.uid.substring(0, 6));
+        const cleanUsername = isShreyanshAdmin ? 'shreyansh' : (emailPrefix || ('user_' + fbUser.uid.substring(0, 6)));
 
-        setCurrentUser(prev => prev || {
+        const authUser: AuthUser = {
           id: fbUser.uid,
           email: fbUser.email || '',
-          name: cleanName,
+          name: isShreyanshAdmin ? 'Shreyansh Gupta' : cleanName,
           username: cleanUsername,
-          avatarUrl: fbUser.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanUsername}`,
-          plan: 'pro',
+          avatarUrl: fbUser.photoURL || (isShreyanshAdmin ? INITIAL_PROFILES.shreyansh.avatarUrl : `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanUsername}`),
+          plan: isShreyanshAdmin ? 'pro' : 'free',
+        };
+
+        setCurrentUser(authUser);
+
+        // Auto-create profile if does not exist for this user
+        setProfiles(prev => {
+          if (prev[cleanUsername]) {
+            return prev;
+          }
+
+          const newProfile: UserProfile = {
+            id: 'user-' + fbUser.uid,
+            username: cleanUsername,
+            name: cleanName,
+            tagline: 'Digital Creator & Builder',
+            bio: `Welcome to my Connectly link space! Explore my projects and links below.`,
+            avatarUrl: authUser.avatarUrl,
+            isVerified: isShreyanshAdmin,
+            themeId: 'aurora-glass',
+            plan: isShreyanshAdmin ? 'pro' : 'free',
+            createdAt: new Date().toISOString(),
+            email: fbUser.email || '',
+            stats: { views: 1, likes: 0, shares: 0, qrScans: 0 },
+            qrSettings: {
+              fgColor: '#8b5cf6',
+              bgColor: '#0d1117',
+              includeAvatar: true,
+              style: 'minimal',
+              dotType: 'rounded',
+              customText: `Connect with ${cleanName}`,
+            },
+            links: [
+              {
+                id: 'link-init-1',
+                platform: 'website',
+                title: 'My Website & Portfolio',
+                subtitle: 'Check out my latest projects and creations',
+                url: 'https://example.com',
+                position: 1,
+                isVisible: true,
+                clicks: 0,
+              },
+              {
+                id: 'link-init-2',
+                platform: 'github',
+                title: 'GitHub Repositories',
+                subtitle: 'Open source work and code',
+                url: 'https://github.com',
+                position: 2,
+                isVisible: true,
+                clicks: 0,
+              },
+              {
+                id: 'link-init-3',
+                platform: 'linkedin',
+                title: 'LinkedIn Network',
+                subtitle: 'Connect with me professionally',
+                url: 'https://linkedin.com',
+                position: 3,
+                isVisible: true,
+                clicks: 0,
+              }
+            ],
+          };
+
+          saveProfileToFirestore(newProfile);
+          apiCreateProfile(newProfile);
+
+          return {
+            ...prev,
+            [cleanUsername]: newProfile,
+          };
         });
+
+        setCurrentUsername(cleanUsername);
+      } else {
+        // Logged out
+        setCurrentUser(null);
       }
     });
 
@@ -285,14 +356,8 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const loginAsAdminDemo = () => {
-    setCurrentUser({
-      id: 'admin-shreyansh',
-      email: ADMIN_EMAIL,
-      name: 'Shreyansh (Super Admin)',
-      username: 'shreyansh',
-      avatarUrl: INITIAL_PROFILES.shreyansh.avatarUrl,
-      plan: 'pro',
-    });
+    // In production, bypass is strictly disabled. Authentication requires verified Google Sign-In as shreyanshg2005@gmail.com
+    console.warn('[Security] Simulated admin bypass is disabled. Please authenticate via Google as shreyanshg2005@gmail.com');
   };
 
   const exportAllData = (): string => {
@@ -593,14 +658,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const resetToDemo = () => {
     setProfiles(INITIAL_PROFILES);
     setCurrentUsername('shreyansh');
-    setCurrentUser({
-      id: 'user-shreyansh',
-      email: ADMIN_EMAIL,
-      name: 'Shreyansh Gupta',
-      username: 'shreyansh',
-      avatarUrl: INITIAL_PROFILES.shreyansh.avatarUrl,
-      plan: 'pro',
-    });
+    setCurrentUser(null);
     setLikedProfileIds([]);
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(AUTH_KEY);

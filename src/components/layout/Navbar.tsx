@@ -64,18 +64,18 @@ export const Navbar: React.FC<NavbarProps> = ({ currentRoute, navigateTo, onOpen
       icon: null,
       active: false
     },
-    {
+    ...(isAdmin ? [{
       label: 'Admin',
       onClick: () => navigateTo('admin'),
       icon: <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />,
       active: false
-    }
+    }] : [])
   ] : [
     { label: 'Home', onClick: () => navigateTo('landing'), icon: null, active: false },
     { label: 'Studio', onClick: () => navigateTo('dashboard'), icon: <Layers className="w-3.5 h-3.5" />, active: currentRoute === 'dashboard' },
     { label: 'Live Profile', onClick: () => navigateTo(`@${currentProfile.username}`), icon: <User className="w-3.5 h-3.5" />, active: currentRoute.startsWith('@') || currentRoute.startsWith('/@') },
     { label: 'Print Poster', onClick: () => navigateTo(`poster-${currentProfile.username}`), icon: <QrCode className="w-3.5 h-3.5" />, active: currentRoute.startsWith('poster-') },
-    { label: 'Admin', onClick: () => navigateTo('admin'), icon: <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />, active: currentRoute === 'admin' },
+    ...(isAdmin ? [{ label: 'Admin', onClick: () => navigateTo('admin'), icon: <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />, active: currentRoute === 'admin' }] : [])
   ];
 
   return (
@@ -199,20 +199,20 @@ export const Navbar: React.FC<NavbarProps> = ({ currentRoute, navigateTo, onOpen
                       <ArrowRight className="w-3.5 h-3.5" />
                     </button>
 
-                    <button
-                      onClick={() => navigateTo('admin')}
-                      className="w-full text-left px-3 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/10 rounded-xl transition-colors flex items-center justify-between"
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Admin Control Panel</span>
-                      </span>
-                      {isAdmin && (
+                    {isAdmin && (
+                      <button
+                        onClick={() => navigateTo('admin')}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/10 rounded-xl transition-colors flex items-center justify-between"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Admin Control Panel</span>
+                        </span>
                         <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">
                           ROOT
                         </span>
-                      )}
-                    </button>
+                      </button>
+                    )}
                     
                     {currentUser && (
                       <button

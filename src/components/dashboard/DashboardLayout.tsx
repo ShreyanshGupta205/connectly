@@ -212,6 +212,27 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
         {/* Center Content Tab Area (6 cols on xl, 5 cols on lg) */}
         <main className={`lg:col-span-5 xl:col-span-6 min-w-0 ${mobilePhonePreviewOpen ? 'hidden lg:block' : 'block'}`}>
+          {!currentUser && (
+            <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-indigo-900/40 via-purple-900/30 to-slate-900 border border-indigo-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg shadow-indigo-950/30">
+              <div className="space-y-0.5">
+                <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  <span>Viewing in Guest Demo Mode</span>
+                </p>
+                <p className="text-[11px] text-slate-300">
+                  Sign in with Google to claim your custom handle, save your links permanently, and share your own profile!
+                </p>
+              </div>
+              <button
+                onClick={() => setAuthModalOpen(true)}
+                className="flex-shrink-0 px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all shadow-md hover:scale-105 active:scale-95"
+              >
+                <GoogleIcon className="w-3.5 h-3.5" />
+                <span>Claim Your Profile</span>
+              </button>
+            </div>
+          )}
+
           {activeTab === 'overview' && <OverviewTab navigateTo={navigateTo} onOpenAI={() => setIsAIModalOpen(true)} />}
           {activeTab === 'editor' && <ProfileEditorTab onOpenAI={() => setIsAIModalOpen(true)} />}
           {activeTab === 'links' && <LinksManagerTab />}

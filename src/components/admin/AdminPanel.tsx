@@ -6,7 +6,6 @@ import {
   BarChart3, 
   Database, 
   Lock, 
-  Sparkles, 
   CheckCircle2, 
   Search, 
   Trash2, 
@@ -42,7 +41,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ navigateTo }) => {
     updateAnyProfile, 
     switchProfile, 
     createNewProfile,
-    loginAsAdminDemo,
     logout,
     exportAllData,
     isCloudConnected
@@ -183,17 +181,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ navigateTo }) => {
               <span>Sign in with Google ({ADMIN_EMAIL})</span>
             </button>
 
-            {/* Quick Simulation Button for Developer Local Testing */}
-            <button
-              onClick={() => {
-                loginAsAdminDemo();
-                toast.success('Admin Session Activated', `Signed in as ${ADMIN_EMAIL}`);
-              }}
-              className="w-full py-2.5 px-4 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 font-bold text-xs flex items-center justify-center gap-2 transition-all"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Simulate Admin Login ({ADMIN_EMAIL})</span>
-            </button>
+            {currentUser && (
+              <button
+                onClick={() => {
+                  logout();
+                  toast.info('Signed out of current session');
+                }}
+                className="w-full py-2.5 px-4 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/30 text-rose-300 font-bold text-xs flex items-center justify-center gap-2 transition-all"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sign Out Current Account</span>
+              </button>
+            )}
 
             <button
               onClick={() => navigateTo('landing')}

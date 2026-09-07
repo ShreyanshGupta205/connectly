@@ -78,25 +78,19 @@ export const Footer: React.FC<FooterProps> = ({ navigateTo }) => {
           <ul className="space-y-2.5 text-sm">
             <li>
               <button onClick={() => navigateTo('@shreyansh')} className="hover:text-white transition-colors flex items-center gap-1">
-                Shreyansh Gupta (AI)
+                @shreyansh (AI Developer)
                 <ArrowUpRight className="w-3.5 h-3.5 text-slate-500" />
               </button>
             </li>
             <li>
-              <button onClick={() => navigateTo('@elena')} className="hover:text-white transition-colors flex items-center gap-1">
-                Elena Vance (Creator)
-                <ArrowUpRight className="w-3.5 h-3.5 text-slate-500" />
-              </button>
-            </li>
-            <li>
-              <button onClick={() => navigateTo('@marcus')} className="hover:text-white transition-colors flex items-center gap-1">
-                Marcus Chen (Founder)
+              <button onClick={() => navigateTo('dashboard')} className="hover:text-white transition-colors flex items-center gap-1">
+                Create Your Profile
                 <ArrowUpRight className="w-3.5 h-3.5 text-slate-500" />
               </button>
             </li>
             <li>
               <button onClick={() => navigateTo('poster-shreyansh')} className="hover:text-white transition-colors flex items-center gap-1">
-                Event Hackathon Badge
+                Event Hackathon Poster
                 <ArrowUpRight className="w-3.5 h-3.5 text-slate-500" />
               </button>
             </li>
