@@ -8,6 +8,7 @@
     "server": "node server/index.mjs",
     "start": "node server/index.mjs",
     "build": "tsc -b && vite build",
+    "test": "node --test tests/*.test.mjs && node tests/test_og_handler.mjs",
     "lint": "oxlint",
     "preview": "vite preview"
   },

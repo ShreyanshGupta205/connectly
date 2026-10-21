@@ -282,7 +282,7 @@ export const PersonaUseCases: React.FC<PersonaUseCasesProps> = ({ navigateTo }) 
                   <Heart className="w-3 h-3 text-rose-500 fill-rose-500" />
                   <span>Loved by Visitors</span>
                 </span>
-                <span className="text-indigo-400 font-semibold">connectly.bio</span>
+                <span className="text-indigo-400 font-semibold">Connectly</span>
               </div>
 
             </div>

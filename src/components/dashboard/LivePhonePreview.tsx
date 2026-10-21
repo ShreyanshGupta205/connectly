@@ -11,6 +11,7 @@ import { useProfile } from '../../context/ProfileContext';
 import { getThemeById } from '../../data/themes';
 import { getPlatformMeta } from '../../utils/platformIcons';
 import { BrandIcon } from '../common/BrandLogo';
+import { getSiteHostname } from '../../utils/router';
 
 interface LivePhonePreviewProps {
   onOpenQR?: () => void;
@@ -182,7 +183,7 @@ export const LivePhonePreview: React.FC<LivePhonePreviewProps> = ({ onOpenQR, on
           {/* Mobile Footer */}
           <div className="mt-6 pt-3 border-t border-white/10 text-[9px] text-slate-400 flex items-center justify-center gap-1.5 pb-3">
             <BrandIcon sizeClass="w-3 h-3" />
-            <span>connectly.bio/@{currentProfile.username}</span>
+            <span>{getSiteHostname()}/@{currentProfile.username}</span>
           </div>
 
         </div>

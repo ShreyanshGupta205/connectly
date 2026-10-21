@@ -16,6 +16,7 @@ import {
 import { useProfile } from '../../context/ProfileContext';
 import { useToast } from '../../context/ToastContext';
 import { downloadVCard } from '../../utils/vcardUtils';
+import { profileUrl, getSiteHostname } from '../../utils/router';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -73,11 +74,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       id: 'action-copy-link',
       category: 'Actions',
       title: 'Copy Profile Link',
-      subtitle: `connectly.bio/@${currentProfile.username}`,
+      subtitle: `${getSiteHostname()}/@${currentProfile.username}`,
       icon: <Copy className="w-4 h-4 text-emerald-400" />,
       shortcut: '⌘C',
       action: () => {
-        const url = `${window.location.origin}/#/@${currentProfile.username}`;
+        const url = profileUrl(currentProfile.username);
         navigator.clipboard.writeText(url);
         toast.success('Link Copied to Clipboard!', url);
         onClose();

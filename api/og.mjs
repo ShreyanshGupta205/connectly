@@ -82,52 +82,107 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * Returns generic site-level OpenGraph metadata for the root domain or database failure fallback.
+ */
+function getGenericSiteHtml(siteUrl, customTitle, customDesc) {
+  const title = customTitle || 'Connectly - One Profile. Every Connection.';
+  const desc = customDesc || 'The modern digital identity and link-in-bio platform for developers, creators, and builders. Generate custom profiles, QR codes, and printable event posters.';
+  const image = `${siteUrl}/connectly-icon-512.png`;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)}</title>
+  <meta name="description" content="${escapeHtml(desc)}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Connectly">
+  <meta property="og:url" content="${escapeHtml(siteUrl)}">
+  <meta property="og:title" content="${escapeHtml(title)}">
+  <meta property="og:description" content="${escapeHtml(desc)}">
+  <meta property="og:image" content="${escapeHtml(image)}">
+  <meta property="og:image:width" content="512">
+  <meta property="og:image:height" content="512">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="${escapeHtml(title)}">
+  <meta name="twitter:description" content="${escapeHtml(desc)}">
+  <meta name="twitter:image" content="${escapeHtml(image)}">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #020617; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+    .card { max-width: 420px; padding: 2rem; border-radius: 1rem; background: #0f172a; border: 1px solid #1e293b; }
+    img { width: 80px; height: 80px; border-radius: 1rem; margin-bottom: 1rem; }
+    h1 { font-size: 1.25rem; margin: 0.5rem 0 0.5rem; color: #f8fafc; }
+    p { color: #94a3b8; font-size: 0.875rem; line-height: 1.5; }
+    a { display: inline-block; margin-top: 1rem; padding: 0.6rem 1.2rem; background: #4f46e5; color: white; text-decoration: none; border-radius: 0.5rem; font-weight: 500; font-size: 0.875rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="${escapeHtml(image)}" alt="Connectly Logo" />
+    <h1>${escapeHtml(title)}</h1>
+    <p>${escapeHtml(desc)}</p>
+    <a href="${escapeHtml(siteUrl)}">Visit Connectly</a>
+  </div>
+</body>
+</html>`;
+}
+
 export default async function handler(req, res) {
   // 1. Resolve siteUrl from SITE_URL environment variable or request headers (fallback to request origin)
   const envSiteUrl = process.env.SITE_URL ? process.env.SITE_URL.replace(/\/+$/, '') : null;
-  const host = req.headers['x-forwarded-host'] || req.headers?.host;
-  const protocol = req.headers['x-forwarded-proto'] || 'https';
+  const host = req.headers?.['x-forwarded-host'] || req.headers?.host;
+  const protocol = req.headers?.['x-forwarded-proto'] || 'https';
   const requestOrigin = host ? `${protocol}://${host}` : 'https://connectly-hazel.vercel.app';
   const siteUrl = envSiteUrl || requestOrigin;
 
-  // 2. Extract and validate requested username handle
-  const rawHandle = req.query?.handle || '';
-  const cleanHandle = String(rawHandle).replace(/^@/, '').replace(/^\/+/, '').toLowerCase().trim();
+  try {
+    // 2. Extract and validate requested username handle
+    const rawHandle = req.query?.handle || '';
+    const cleanHandle = String(rawHandle).replace(/^@/, '').replace(/^\/+/, '').toLowerCase().trim();
 
-  // Abuse / rate / input validation: handle must be <= 30 chars and match allowed identifier regex
-  if (cleanHandle && (cleanHandle.length > 30 || !/^[a-z0-9_.-]+$/.test(cleanHandle))) {
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Cache-Control', 's-maxage=60');
-    return res.status(400).send(`<!DOCTYPE html><html><body><h1>400 Invalid Handle</h1><p>Username handles may only contain letters, numbers, periods, dashes, and underscores (max 30 characters).</p></body></html>`);
-  }
-
-  let profile = cleanHandle ? FALLBACK_PROFILES[cleanHandle] : null;
-
-  // 3. Database query: only fetch public profile fields (name, tagline, bio, avatar_url, theme_id)
-  if (!profile && cleanHandle) {
-    try {
-      const client = getPool();
-      if (client) {
-        const result = await client.query(
-          'SELECT name, tagline, bio, avatar_url, theme_id FROM profiles WHERE LOWER(username) = $1 LIMIT 1',
-          [cleanHandle]
-        );
-        if (result.rows.length > 0) {
-          const row = result.rows[0];
-          profile = {
-            username: cleanHandle,
-            name: row.name || cleanHandle,
-            tagline: row.tagline || 'Connectly Digital Identity Profile',
-            bio: row.bio || row.tagline || 'View verified social links, QR codes, and digital badges on Connectly.',
-            avatarUrl: row.avatar_url || '/connectly-icon-512.png',
-            themeId: row.theme_id || 'dark'
-          };
-        }
-      }
-    } catch (e) {
-      // Quiet fallback if database is temporarily unreachable
+    // If no handle is provided (e.g. root query), return generic site OG tags
+    if (!cleanHandle) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate=43200');
+      return res.status(200).send(getGenericSiteHtml(siteUrl));
     }
-  }
+
+    // Abuse / rate / input validation: handle must be <= 30 chars and match allowed identifier regex
+    if (cleanHandle.length > 30 || !/^[a-z0-9_.-]+$/.test(cleanHandle)) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 's-maxage=60');
+      return res.status(400).send(`<!DOCTYPE html><html><body><h1>400 Invalid Handle</h1><p>Username handles may only contain letters, numbers, periods, dashes, and underscores (max 30 characters).</p></body></html>`);
+    }
+
+    let profile = FALLBACK_PROFILES[cleanHandle] || null;
+
+    // 3. Database query: only fetch public profile fields (name, tagline, bio, avatar_url, theme_id)
+    if (!profile) {
+      try {
+        const client = getPool();
+        if (client) {
+          const result = await client.query(
+            'SELECT name, tagline, bio, avatar_url, theme_id FROM profiles WHERE LOWER(username) = $1 LIMIT 1',
+            [cleanHandle]
+          );
+          if (result.rows.length > 0) {
+            const row = result.rows[0];
+            profile = {
+              username: cleanHandle,
+              name: row.name || cleanHandle,
+              tagline: row.tagline || 'Connectly Digital Identity Profile',
+              bio: row.bio || row.tagline || 'View verified social links, QR codes, and digital badges on Connectly.',
+              avatarUrl: row.avatar_url || '/connectly-icon-512.png',
+              themeId: row.theme_id || 'dark'
+            };
+          }
+        }
+      } catch (dbError) {
+        // If DB is unreachable and handle is unknown, gracefully return generic site OG tags
+        console.warn('Database connection failed in api/og.mjs:', dbError.message);
+      }
+    }
 
   // 4. Unknown Handle Handling: If no handle is matched, return 404 with noindex and claim link
   if (!profile) {
@@ -242,4 +297,11 @@ export default async function handler(req, res) {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=86400');
   return res.status(200).send(html);
+  } catch (unexpectedError) {
+    console.error('Unhandled exception in api/og.mjs:', unexpectedError);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 's-maxage=60');
+    return res.status(200).send(getGenericSiteHtml(siteUrl));
+  }
 }
+

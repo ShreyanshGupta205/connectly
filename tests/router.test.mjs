@@ -156,3 +156,74 @@ describe('Bot Crawler User-Agent Detection', () => {
     });
   }
 });
+
+describe('Canonical URL Builders - Zero /#/ Guarantee', () => {
+  function getSiteUrl(envSiteUrl, windowOrigin) {
+    if (envSiteUrl) return envSiteUrl.replace(/\/+$/, '');
+    if (windowOrigin) return windowOrigin.replace(/\/+$/, '');
+    return 'https://connectly-hazel.vercel.app';
+  }
+
+  function profileUrl(handle, envSiteUrl, windowOrigin) {
+    const clean = (handle || '').replace(/^[@#/]+/, '').trim();
+    const site = getSiteUrl(envSiteUrl, windowOrigin);
+    return `${site}/@${clean}`;
+  }
+
+  function getSocialShareUrls(username, profileName, envSiteUrl, windowOrigin) {
+    const url = profileUrl(username, envSiteUrl, windowOrigin);
+    const text = `Check out ${profileName}'s verified digital identity and links on Connectly! 🚀`;
+
+    return {
+      whatsapp: `https://api.whatsapp.com/send?text=${encodeURIComponent(`${text} ${url}`)}`,
+      twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
+      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`,
+      telegram: `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`,
+      reddit: `https://reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent(text)}`,
+      email: `mailto:?subject=${encodeURIComponent(`Connect with ${profileName}`)}&body=${encodeURIComponent(`${text}\n\n${url}`)}`,
+      directUrl: url,
+    };
+  }
+
+  test('profileUrl never returns /#/ for standard handles', () => {
+    const url = profileUrl('shreyansh', 'https://connectly.bio');
+    assert.equal(url, 'https://connectly.bio/@shreyansh');
+    assert.ok(!url.includes('/#/'), 'Must not contain /#/');
+  });
+
+  test('profileUrl strips leading @, #, or /#/@ and returns canonical path', () => {
+    const variants = ['@shreyansh', 'shreyansh', '/@shreyansh', '/#/@shreyansh', '#/@shreyansh'];
+    for (const v of variants) {
+      const url = profileUrl(v, 'https://connectly.bio');
+      assert.equal(url, 'https://connectly.bio/@shreyansh', `Failed on variant: ${v}`);
+      assert.ok(!url.includes('/#/'), `Variant ${v} produced /#/ in ${url}`);
+    }
+  });
+
+  test('profileUrl respects VITE_SITE_URL env var', () => {
+    const url = profileUrl('alex', 'https://mycustomdomain.com');
+    assert.equal(url, 'https://mycustomdomain.com/@alex');
+    assert.ok(!url.includes('/#/'));
+  });
+
+  test('profileUrl falls back to window.location.origin when env unset', () => {
+    const url = profileUrl('alex', null, 'http://localhost:5173');
+    assert.equal(url, 'http://localhost:5173/@alex');
+    assert.ok(!url.includes('/#/'));
+  });
+
+  test('profileUrl falls back to staging domain when both env and window are unset', () => {
+    const url = profileUrl('alex', null, null);
+    assert.equal(url, 'https://connectly-hazel.vercel.app/@alex');
+    assert.ok(!url.includes('/#/'));
+  });
+
+  test('getSocialShareUrls generates zero /#/ across all platform share targets', () => {
+    const shares = getSocialShareUrls('shreyansh', 'Shreyansh Gupta', 'https://connectly-hazel.vercel.app');
+    for (const [platform, link] of Object.entries(shares)) {
+      assert.ok(!link.includes('/#/'), `Platform ${platform} URL contained /#/: ${link}`);
+      assert.ok(link.includes('%2F%40shreyansh') || link.includes('/@shreyansh'), `Platform ${platform} missing canonical handle in ${link}`);
+    }
+  });
+});
+

@@ -151,3 +151,52 @@ export function isPublicProfileRoute(route: string): boolean {
 export function isPosterRoute(route: string): boolean {
   return route.startsWith('poster/') || route.startsWith('poster-');
 }
+
+/**
+ * Resolves the root site URL.
+ * Priority: import.meta.env.VITE_SITE_URL -> window.location.origin -> fallback https://connectly-hazel.vercel.app
+ */
+export function getSiteUrl(): string {
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_SITE_URL) {
+      return (import.meta.env.VITE_SITE_URL as string).replace(/\/+$/, '');
+    }
+  } catch {
+    // In test or non-Vite environments
+  }
+  if (typeof window !== 'undefined' && window.location && window.location.origin) {
+    return window.location.origin.replace(/\/+$/, '');
+  }
+  return 'https://connectly-hazel.vercel.app';
+}
+
+/**
+ * Returns hostname for branding and display purposes (e.g. "connectly-hazel.vercel.app" or custom domain).
+ */
+export function getSiteHostname(): string {
+  try {
+    const url = getSiteUrl();
+    return new URL(url).hostname;
+  } catch {
+    return 'connectly.bio';
+  }
+}
+
+/**
+ * Single canonical helper that always returns modern path URLs: `${siteUrl}/@${cleanHandle}`.
+ * Guaranteed never to return `/#/`.
+ */
+export function profileUrl(handle: string): string {
+  const clean = (handle || '').replace(/^[@#/]+/, '').trim();
+  const site = getSiteUrl();
+  return `${site}/@${clean}`;
+}
+
+/**
+ * Returns canonical browser path for a user profile: `/@${cleanHandle}`.
+ */
+export function profilePath(handle: string): string {
+  const clean = (handle || '').replace(/^[@#/]+/, '').trim();
+  return `/@${clean}`;
+}
+

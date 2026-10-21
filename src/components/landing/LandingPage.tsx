@@ -10,6 +10,7 @@ import { PricingSection } from './PricingSection';
 import { FAQSection } from './FAQSection';
 import { Sparkles, ArrowRight, ShieldCheck, Zap, Lock } from 'lucide-react';
 import { GoogleAuthModal, GoogleIcon } from '../common/GoogleAuthModal';
+import { getSiteHostname } from '../../utils/router';
 
 interface LandingPageProps {
   navigateTo: (route: string) => void;
@@ -84,7 +85,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ navigateTo }) => {
           <div className="pt-2 max-w-md mx-auto space-y-3">
             <form onSubmit={handleBottomClaim} className="flex items-center p-1.5 rounded-2xl bg-white/10 border border-white/20 backdrop-blur-xl shadow-2xl focus-within:border-indigo-400 transition-all">
               <span className="pl-3.5 text-xs text-slate-400 font-semibold select-none">
-                connectly.bio/@
+                {getSiteHostname()}/@
               </span>
               <input
                 type="text"

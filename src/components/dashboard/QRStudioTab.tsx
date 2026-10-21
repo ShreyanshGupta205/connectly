@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useProfile } from '../../context/ProfileContext';
 import { downloadElementAsImage } from '../../utils/qrUtils';
+import { profileUrl as getProfileUrl, getSiteHostname } from '../../utils/router';
 
 interface QRStudioTabProps {
   navigateTo: (route: string) => void;
@@ -21,7 +22,8 @@ export const QRStudioTab: React.FC<QRStudioTabProps> = ({ navigateTo }) => {
   const [downloading, setDownloading] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
 
-  const profileUrl = `${window.location.origin}/#/@${currentProfile.username}`;
+  const profileUrl = getProfileUrl(currentProfile.username);
+  const siteHostname = getSiteHostname();
 
   const qrSettings = currentProfile.qrSettings || {
     fgColor: '#8b5cf6',
@@ -267,7 +269,7 @@ export const QRStudioTab: React.FC<QRStudioTabProps> = ({ navigateTo }) => {
               <p className="text-xs font-bold text-white uppercase tracking-wider">
                 {qrSettings.customText || `Scan to connect with ${currentProfile.name}`}
               </p>
-              <p className="text-[10px] text-slate-400 font-mono">connectly.bio/@{currentProfile.username}</p>
+              <p className="text-[10px] text-slate-400 font-mono">{siteHostname}/@{currentProfile.username}</p>
             </div>
 
             {/* Badge Footer */}

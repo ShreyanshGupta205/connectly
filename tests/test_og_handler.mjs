@@ -64,8 +64,26 @@ async function test() {
     setHeader: () => {},
     status: () => ({ send: (body) => { output4 = body; } })
   });
-  delete process.env.SITE_URL;
   console.log('Uses SITE_URL canonical link:', output4.includes('https://custom-connectly.com/@sarah'));
+
+  console.log('\n--- Test 5: Root / DB Unreachable Fallback (200 with Generic OG tags) ---');
+  let output5 = '';
+  let status5 = 0;
+  await ogHandler({
+    url: '/api/og',
+    headers: { host: 'connectly-hazel.vercel.app', 'user-agent': 'WhatsApp/2.21.12.21' },
+    query: {}
+  }, {
+    setHeader: () => {},
+    status: (s) => {
+      status5 = s;
+      return { send: (body) => { output5 = body; } };
+    }
+  });
+  console.log('Status:', status5);
+  console.log('Includes generic site title:', output5.includes('Connectly - One Profile. Every Connection.'));
+  console.log('Includes generic site image:', output5.includes('connectly-icon-512.png'));
 }
 
 test().catch(console.error);
+

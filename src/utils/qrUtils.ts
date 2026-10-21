@@ -1,5 +1,6 @@
 import html2canvas from 'html2canvas';
 import type { UserProfile } from '../types';
+import { profileUrl } from './router';
 
 export const generateVCard = (profile: UserProfile): string => {
   const vCard = [
@@ -10,7 +11,7 @@ export const generateVCard = (profile: UserProfile): string => {
     `TITLE:${profile.tagline}`,
     `NOTE:${profile.bio}`,
     profile.email ? `EMAIL;TYPE=INTERNET:${profile.email}` : '',
-    `URL:${window.location.origin}/#/@${profile.username}`,
+    `URL:${profileUrl(profile.username)}`,
     'END:VCARD'
   ].filter(Boolean).join('\r\n');
 
@@ -49,7 +50,7 @@ export const downloadElementAsImage = async (
 };
 
 export const getSocialShareUrls = (username: string, profileName: string) => {
-  const url = `${window.location.origin}/#/@${username}`;
+  const url = profileUrl(username);
   const text = `Check out ${profileName}'s verified digital identity and links on Connectly! 🚀`;
 
   return {
@@ -62,3 +63,4 @@ export const getSocialShareUrls = (username: string, profileName: string) => {
     directUrl: url,
   };
 };
+
