@@ -37,6 +37,14 @@ async function test() {
   console.log('Status:', res1.getStatus());
   console.log('Cache-Control:', res1.getHeaders()['cache-control']);
   console.log('Includes title:', res1.getBody().includes('Shreyansh Gupta (@shreyansh) | Connectly'));
+  console.log('Includes canonical link:', res1.getBody().includes('<link rel="canonical" href="https://connectly.bio/@shreyansh">'));
+  console.log('Includes robots meta:', res1.getBody().includes('<meta name="robots" content="index, follow">'));
+  if (!res1.getBody().includes('<link rel="canonical" href="https://connectly.bio/@shreyansh">')) {
+    throw new Error('Missing or invalid link rel="canonical" in profile card response');
+  }
+  if (!res1.getBody().includes('<meta name="robots" content="index, follow">')) {
+    throw new Error('Missing or invalid meta name="robots" in profile card response');
+  }
   if (res1.getHeaders()['cache-control'] !== 'public, s-maxage=300, stale-while-revalidate=60') {
     throw new Error(`Unexpected Cache-Control on valid profile: ${res1.getHeaders()['cache-control']}`);
   }

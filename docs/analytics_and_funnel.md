@@ -18,12 +18,24 @@ To calculate verified activated profiles directly from production database table
 ```sql
 -- Connectly North Star Metric: Activated Profiles Ground Truth
 -- Definition: >= 3 active links AND shared at least once
+-- Exclusions: Seed/demo profiles ('shreyansh', 'sarah', 'alex', 'demo', 'test', 'admin')
+-- Cutoff: created_at >= launch start timestamp
 SELECT 
     COUNT(*) AS total_activated_profiles,
-    ROUND(COUNT(*)::numeric / NULLIF((SELECT COUNT(*) FROM public.profiles), 0) * 100, 2) AS activation_rate_pct
+    ROUND(
+        COUNT(*)::numeric / 
+        NULLIF((
+            SELECT COUNT(*) FROM public.profiles 
+            WHERE LOWER(username) NOT IN ('shreyansh', 'sarah', 'alex', 'demo', 'test', 'admin')
+              AND created_at >= '2026-10-21T00:00:00Z' -- [CUTOFF PLACEHOLDER: Replace with actual launch start timestamp]
+        ), 0) * 100, 
+        2
+    ) AS activation_rate_pct
 FROM public.profiles
 WHERE 
-    jsonb_array_length(COALESCE(links, '[]'::jsonb)) >= 3
+    LOWER(username) NOT IN ('shreyansh', 'sarah', 'alex', 'demo', 'test', 'admin')
+    AND created_at >= '2026-10-21T00:00:00Z' -- [CUTOFF PLACEHOLDER: Replace with actual launch start timestamp]
+    AND jsonb_array_length(COALESCE(links, '[]'::jsonb)) >= 3
     AND COALESCE((stats->>'shares')::integer, 0) >= 1;
 
 -- Detailed Breakdown of Activated Profiles
@@ -37,7 +49,9 @@ SELECT
     created_at
 FROM public.profiles
 WHERE 
-    jsonb_array_length(COALESCE(links, '[]'::jsonb)) >= 3
+    LOWER(username) NOT IN ('shreyansh', 'sarah', 'alex', 'demo', 'test', 'admin')
+    AND created_at >= '2026-10-21T00:00:00Z' -- [CUTOFF PLACEHOLDER: Replace with actual launch start timestamp]
+    AND jsonb_array_length(COALESCE(links, '[]'::jsonb)) >= 3
     AND COALESCE((stats->>'shares')::integer, 0) >= 1
 ORDER BY shares_count DESC, created_at ASC;
 ```

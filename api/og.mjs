@@ -104,6 +104,8 @@ function getGenericSiteHtml(siteUrl, customTitle, customDesc) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}</title>
   <meta name="description" content="${escapeHtml(desc)}">
+  <link rel="canonical" href="${escapeHtml(siteUrl)}">
+  <meta name="robots" content="index, follow">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Connectly">
   <meta property="og:url" content="${escapeHtml(siteUrl)}">
@@ -237,6 +239,7 @@ export default async function handler(req, res) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(notFoundTitle)}</title>
   <meta name="description" content="${escapeHtml(notFoundDesc)}">
+  <link rel="canonical" href="${escapeHtml(claimUrl)}">
   <meta name="robots" content="noindex, nofollow">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Connectly">
@@ -283,6 +286,8 @@ export default async function handler(req, res) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(pageTitle)}</title>
   <meta name="description" content="${escapeHtml(description)}">
+  <link rel="canonical" href="${escapeHtml(canonicalUrl)}">
+  <meta name="robots" content="index, follow">
 
   <!-- Open Graph / Facebook / WhatsApp / LinkedIn -->
   <meta property="og:type" content="profile">
