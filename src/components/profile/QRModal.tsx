@@ -5,6 +5,7 @@ import type { UserProfile } from '../../types';
 import { generateVCard, downloadElementAsImage } from '../../utils/qrUtils';
 import { profileUrl as getProfileUrl } from '../../utils/router';
 import { BrandIcon } from '../common/BrandLogo';
+import { trackEvent } from '../../utils/analytics';
 
 interface QRModalProps {
   profile: UserProfile;
@@ -20,8 +21,14 @@ export const QRModal: React.FC<QRModalProps> = ({ profile, isOpen, onClose, onOp
   const vCardDataUri = generateVCard(profile);
 
   const handleDownloadPNG = async () => {
+    trackEvent('qr_downloaded', {
+      format: 'png',
+      theme: profile.themeId,
+      has_logo: Boolean(profile.avatarUrl),
+    });
     await downloadElementAsImage('profile-qr-downloadable', `${profile.username}-qr-code`, 'png', 3);
   };
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">

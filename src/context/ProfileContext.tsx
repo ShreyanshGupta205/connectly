@@ -27,6 +27,7 @@ import {
   apiRecordLinkClick,
   apiToggleVerification
 } from '../services/apiService';
+import { trackEvent } from '../utils/analytics';
 
 export const ADMIN_EMAIL = 'shreyanshg2005@gmail.com';
 
@@ -260,6 +261,10 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
           saveProfileToFirestore(newProfile);
           apiCreateProfile(newProfile);
+          trackEvent('profile_claimed', {
+            method: 'google',
+            theme_id: newProfile.themeId,
+          });
 
           return {
             ...prev,
@@ -332,6 +337,17 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // Async sync to Firestore & PostgreSQL
       saveProfileToFirestore(updated);
       apiUpdateProfile(currentUsername, updated);
+
+      if (updates.bio !== undefined || updates.links !== undefined || updates.avatarUrl !== undefined) {
+        trackEvent('profile_completed', {
+          links_count: updated.links?.length || 0,
+          has_avatar: Boolean(updated.avatarUrl),
+          has_bio: Boolean(updated.bio),
+          has_tagline: Boolean(updated.tagline),
+          theme_id: updated.themeId,
+        });
+      }
+
       return {
         ...prev,
         [currentUsername]: updated,
@@ -466,6 +482,10 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // Increment in Firestore & PostgreSQL Backend
       incrementProfileLikeInFirestore(username, 1);
       apiLikeProfile(username, 1);
+      trackEvent('like_given', {
+        is_guest: !currentUser,
+        theme_id: profile.themeId,
+      });
       return true;
     } else {
       // Unlike

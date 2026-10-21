@@ -11,6 +11,7 @@ import { getPlatformMeta } from '../../utils/platformIcons';
 import { downloadElementAsImage } from '../../utils/qrUtils';
 import { profileUrl as getProfileUrl, getSiteHostname } from '../../utils/router';
 import { BrandLogo, BrandIcon } from '../common/BrandLogo';
+import { trackEvent } from '../../utils/analytics';
 
 interface PrintablePosterProps {
   username: string;
@@ -29,14 +30,25 @@ export const PrintablePoster: React.FC<PrintablePosterProps> = ({ username, navi
   const siteHostname = getSiteHostname();
 
   const handlePrint = () => {
+    trackEvent('poster_exported', {
+      layout: posterFormat === 'a4' ? 'portrait' : (posterFormat === 'badge' ? 'square' : 'story'),
+      format: 'pdf',
+      theme: profile.themeId,
+    });
     window.print();
   };
 
   const handleDownload = async () => {
     setDownloading(true);
+    trackEvent('poster_exported', {
+      layout: posterFormat === 'a4' ? 'portrait' : (posterFormat === 'badge' ? 'square' : 'story'),
+      format: 'png',
+      theme: profile.themeId,
+    });
     await downloadElementAsImage('printable-poster-target', `${profile.username}-connectly-poster`, 'png', 3);
     setDownloading(false);
   };
+
 
   return (
     <div className="min-h-screen bg-[#07090e] text-slate-100 py-8 px-4 sm:px-6">
