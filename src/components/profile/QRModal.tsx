@@ -17,7 +17,7 @@ interface QRModalProps {
 export const QRModal: React.FC<QRModalProps> = ({ profile, isOpen, onClose, onOpenPoster }) => {
   if (!isOpen) return null;
 
-  const profileUrl = getProfileUrl(profile.username);
+  const profileUrl = getProfileUrl(profile.username, 'qr');
   const vCardDataUri = generateVCard(profile);
 
   const handleDownloadPNG = async () => {

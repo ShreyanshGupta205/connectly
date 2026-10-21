@@ -34,6 +34,16 @@ export interface EventProperties {
     is_guest: boolean;
     theme_id?: string;
   };
+  activated: {
+    links_count: number;
+    shares_count: number;
+    theme_id?: string;
+  };
+  profile_visited: {
+    source: 'qr' | 'poster' | 'share' | 'direct' | string;
+    is_qr: boolean;
+    theme_id?: string;
+  };
 }
 
 /**

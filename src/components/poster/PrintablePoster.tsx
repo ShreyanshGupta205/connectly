@@ -26,7 +26,7 @@ export const PrintablePoster: React.FC<PrintablePosterProps> = ({ username, navi
   const cleanUsername = username.replace(/^poster-/, '').replace(/^@/, '');
   const profile = profiles[cleanUsername] || profiles['shreyansh'];
 
-  const profileUrl = getProfileUrl(profile.username);
+  const profileUrl = getProfileUrl(profile.username, 'poster');
   const siteHostname = getSiteHostname();
 
   const handlePrint = () => {

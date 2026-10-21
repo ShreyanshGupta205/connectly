@@ -27,3 +27,10 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# Strategy & agent-setup docs (managed exclusively in agent-setup repo)
+docs/launch_plan.md
+docs/personas.md
+docs/SOUL.md
+docs/pending.md
+docs/event_pilot_kit.md

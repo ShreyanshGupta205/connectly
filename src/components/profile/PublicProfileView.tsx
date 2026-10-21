@@ -15,6 +15,7 @@ import { QRModal } from './QRModal';
 import { downloadVCard } from '../../utils/vcardUtils';
 import { useToast } from '../../context/ToastContext';
 import { BrandLogo, BrandIcon } from '../common/BrandLogo';
+import { trackEvent } from '../../utils/analytics';
 
 interface PublicProfileViewProps {
   username: string;
@@ -43,10 +44,29 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ username, 
     };
   }, [profile]);
 
-  // Record profile visit on mount
+  // Record profile visit on mount with source attribution (?s=qr | poster | share)
   useEffect(() => {
     if (profile) {
-      recordProfileView(profile.username);
+      let source = 'direct';
+      try {
+        if (typeof window !== 'undefined') {
+          const params = new URLSearchParams(window.location.search);
+          const s = params.get('s');
+          if (s) {
+            source = s;
+          }
+        }
+      } catch {
+        // Fallback to direct
+      }
+
+      const isQr = source === 'qr' || source === 'poster';
+      recordProfileView(profile.username, isQr);
+      trackEvent('profile_visited', {
+        source,
+        is_qr: isQr,
+        theme_id: profile.themeId,
+      });
     }
   }, [cleanUsername, profile?.username]);
 

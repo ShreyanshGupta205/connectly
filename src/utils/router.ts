@@ -182,14 +182,20 @@ export function getSiteHostname(): string {
   }
 }
 
+export type ProfileUrlSource = 'qr' | 'poster' | 'share';
+
 /**
  * Single canonical helper that always returns modern path URLs: `${siteUrl}/@${cleanHandle}`.
+ * Accepts an optional source tag (`?s=qr | poster | share`) for attribution.
  * Guaranteed never to return `/#/`.
  */
-export function profileUrl(handle: string): string {
+export function profileUrl(handle: string, source?: ProfileUrlSource | string): string {
   const clean = (handle || '').replace(/^[@#/]+/, '').trim();
   const site = getSiteUrl();
-  return `${site}/@${clean}`;
+  const base = `${site}/@${clean}`;
+  if (!source) return base;
+  const cleanSource = source.replace(/^\?s=/, '').trim();
+  return cleanSource ? `${base}?s=${encodeURIComponent(cleanSource)}` : base;
 }
 
 /**

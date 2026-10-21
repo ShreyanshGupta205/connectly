@@ -39,7 +39,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onClose,
   navigateTo,
 }) => {
-  const { currentProfile } = useProfile();
+  const { currentProfile, recordProfileShare } = useProfile();
   const toast = useToast();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -78,8 +78,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       icon: <Copy className="w-4 h-4 text-emerald-400" />,
       shortcut: '⌘C',
       action: () => {
-        const url = profileUrl(currentProfile.username);
+        const url = profileUrl(currentProfile.username, 'share');
         navigator.clipboard.writeText(url);
+        recordProfileShare(currentProfile.username, 'clipboard', 'command_palette');
         toast.success('Link Copied to Clipboard!', url);
         onClose();
       },

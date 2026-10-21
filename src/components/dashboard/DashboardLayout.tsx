@@ -35,7 +35,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   onOpenShare,
   onOpenCommand 
 }) => {
-  const { currentProfile, currentUser, activeTab, setActiveTab } = useProfile();
+  const { currentProfile, currentUser, activeTab, setActiveTab, recordProfileShare } = useProfile();
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [mobilePhonePreviewOpen, setMobilePhonePreviewOpen] = useState(false);
@@ -192,8 +192,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             <div className="grid grid-cols-2 gap-2 pt-0.5">
               <button
                 onClick={() => {
-                  const url = profileUrl(currentProfile.username);
+                  const url = profileUrl(currentProfile.username, 'share');
                   navigator.clipboard.writeText(url);
+                  recordProfileShare(currentProfile.username, 'clipboard', 'dashboard');
                 }}
                 className="py-1.5 px-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 text-xs font-medium flex items-center justify-center gap-1 transition-colors"
               >

@@ -10,7 +10,7 @@ interface QRSpotlightProps {
 
 export const QRSpotlight: React.FC<QRSpotlightProps> = ({ navigateTo }) => {
   const { currentProfile } = useProfile();
-  const profileUrl = getProfileUrl(currentProfile.username);
+  const profileUrl = getProfileUrl(currentProfile.username, 'qr');
   const siteHostname = getSiteHostname();
 
   return (
