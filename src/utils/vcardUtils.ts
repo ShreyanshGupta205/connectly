@@ -1,6 +1,6 @@
 /**
  * vcardUtils.ts
- * Generates an RFC 6350 compliant vCard (.vcf) for 1-click contact saving
+ * Generates a vCard 3.0 (.vcf) file for 1-click contact saving
  * on iOS, Android, macOS, and Windows.
  */
 import type { UserProfile } from '../types';

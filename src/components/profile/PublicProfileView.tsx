@@ -20,10 +20,15 @@ import { trackEvent } from '../../utils/analytics';
 interface PublicProfileViewProps {
   username: string;
   navigateTo: (route: string) => void;
+  isPreview?: boolean;
 }
 
-export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ username, navigateTo }) => {
-  const { profiles, recordProfileView, recordLinkClick } = useProfile();
+export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ 
+  username, 
+  navigateTo,
+  isPreview = false 
+}) => {
+  const { profiles, recordProfileView, recordLinkClick, currentUser, currentProfile } = useProfile();
   const toast = useToast();
   
   const [isShareOpen, setIsShareOpen] = useState(false);
@@ -31,6 +36,14 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ username, 
 
   const cleanUsername = username.replace(/^@/, '');
   const profile = profiles[cleanUsername] || profiles['shreyansh'];
+
+  // Check if current user is the owner of this profile
+  const isOwner = Boolean(
+    profile && (
+      (currentUser?.username && currentUser.username.toLowerCase() === profile.username.toLowerCase()) ||
+      (currentProfile?.username && currentProfile.username.toLowerCase() === profile.username.toLowerCase())
+    )
+  );
 
   const theme = getThemeById(profile?.themeId || 'aurora-glass');
 
@@ -45,8 +58,9 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ username, 
   }, [profile]);
 
   // Record profile visit on mount with source attribution (?s=qr | poster | share)
+  // Suppressed for profile owners and inside dashboard preview frames
   useEffect(() => {
-    if (profile) {
+    if (profile && !isOwner && !isPreview) {
       let source = 'direct';
       try {
         if (typeof window !== 'undefined') {
@@ -68,7 +82,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ username, 
         theme_id: profile.themeId,
       });
     }
-  }, [cleanUsername, profile?.username]);
+  }, [cleanUsername, profile?.username, isOwner, isPreview]);
 
   if (!profile) {
     return (

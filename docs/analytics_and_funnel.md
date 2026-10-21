@@ -9,7 +9,38 @@ This document specifies the product analytics taxonomy, funnel metrics, and best
 ### North Star Metric
 - **Definition**: An **"Activated Profile"** is defined as a profile having **3+ social/portfolio links AND shared at least once** (`stats.shares >= 1`).
 - **30-Day Target**: **30 activated profiles** (founder placeholder; will be revised after week 2).
-- **Enforcement & Single-Fire Guarantee**: Handled via `src/utils/activation.ts` and `ProfileContext.tsx`. The `activated` event fires strictly once per profile lifecycle and is permanently remembered in `localStorage` (`connectly_activated_<username>`) and profile state (`isActivated: true`).
+- **Source of Truth vs. Diagnostics**: The PostgreSQL database is the singular authoritative source of truth for counting activated profiles. PostHog and client-side telemetry are strictly for funnel drop-off diagnostics.
+- **Enforcement & Single-Fire Guarantee**: Client-side handled via `src/utils/activation.ts` and `ProfileContext.tsx`. The `activated` event fires strictly once per profile lifecycle and is permanently remembered in `localStorage` (`connectly_activated_<username>`) and profile state (`isActivated: true`).
+
+### Database Source-of-Truth Query (Run in Supabase SQL Editor)
+To calculate verified activated profiles directly from production database tables without relying on client events:
+
+```sql
+-- Connectly North Star Metric: Activated Profiles Ground Truth
+-- Definition: >= 3 active links AND shared at least once
+SELECT 
+    COUNT(*) AS total_activated_profiles,
+    ROUND(COUNT(*)::numeric / NULLIF((SELECT COUNT(*) FROM public.profiles), 0) * 100, 2) AS activation_rate_pct
+FROM public.profiles
+WHERE 
+    jsonb_array_length(COALESCE(links, '[]'::jsonb)) >= 3
+    AND COALESCE((stats->>'shares')::integer, 0) >= 1;
+
+-- Detailed Breakdown of Activated Profiles
+SELECT 
+    username,
+    name,
+    jsonb_array_length(COALESCE(links, '[]'::jsonb)) AS links_count,
+    COALESCE((stats->>'shares')::integer, 0) AS shares_count,
+    COALESCE((stats->>'views')::integer, 0) AS views_count,
+    theme_id,
+    created_at
+FROM public.profiles
+WHERE 
+    jsonb_array_length(COALESCE(links, '[]'::jsonb)) >= 3
+    AND COALESCE((stats->>'shares')::integer, 0) >= 1
+ORDER BY shares_count DESC, created_at ASC;
+```
 
 ### Diagnostics (Tracked, Not Targeted)
 Diagnostics provide operational visibility across product health without distorting creator behavior:

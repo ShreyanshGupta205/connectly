@@ -32,7 +32,9 @@ let pool = null;
 let currentConnStr = null;
 
 function getPool() {
-  const connectionString = process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL;
+  // Least-privilege requirement: read ONLY OG_DATABASE_URL with pooled og_reader credentials.
+  // Never fall back to DATABASE_URL or administrative connection strings.
+  const connectionString = process.env.OG_DATABASE_URL;
   if (!connectionString) {
     return null;
   }
@@ -164,15 +166,36 @@ export default async function handler(req, res) {
     let profile = FALLBACK_PROFILES[cleanHandle] || null;
     let dbFailed = false;
 
-    // 3. Database query: only fetch public profile fields (name, tagline, bio, avatar_url, theme_id)
+    // 3. Database query: only fetch public profile fields via OG_DATABASE_URL
     if (!profile) {
+      if (!process.env.OG_DATABASE_URL) {
+        // If OG_DATABASE_URL is unset, return generic no-store fallback
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(200).send(getGenericSiteHtml(siteUrl));
+      }
+
       try {
         const client = getPool();
         if (client) {
-          const result = await client.query(
-            'SELECT name, tagline, bio, avatar_url, theme_id FROM profiles WHERE LOWER(username) = $1 LIMIT 1',
-            [cleanHandle]
-          );
+          let result;
+          try {
+            result = await client.query(
+              'SELECT name, tagline, bio, avatar_url, theme_id FROM public_profiles WHERE LOWER(username) = $1 LIMIT 1',
+              [cleanHandle]
+            );
+          } catch (viewErr) {
+            // Fallback to profiles table if public_profiles view is not yet created
+            if (viewErr.code === '42P01') {
+              result = await client.query(
+                'SELECT name, tagline, bio, avatar_url, theme_id FROM profiles WHERE LOWER(username) = $1 LIMIT 1',
+                [cleanHandle]
+              );
+            } else {
+              throw viewErr;
+            }
+          }
+
           if (result.rows.length > 0) {
             const row = result.rows[0];
             profile = {

@@ -1,3 +1,4 @@
+import pg from 'pg';
 import ogHandler from '../api/og.mjs';
 
 function createMockRes() {
@@ -40,19 +41,27 @@ async function test() {
     throw new Error(`Unexpected Cache-Control on valid profile: ${res1.getHeaders()['cache-control']}`);
   }
 
-  console.log('\n--- Test 2: Unknown Handle (404 + s-maxage=60) ---');
+  console.log('\n--- Test 2: Unknown Handle with Connected DB (404 + s-maxage=60) ---');
+  process.env.OG_DATABASE_URL = 'postgresql://mock:mock@localhost:5432/mock';
+  const origQuery = pg.Pool.prototype.query;
+  pg.Pool.prototype.query = async () => ({ rows: [] });
+
   const res2 = createMockRes();
   await ogHandler({
     url: '/api/og?handle=nonexistent_user',
     headers: { host: 'connectly.bio', 'user-agent': 'Twitterbot/1.0' },
     query: { handle: 'nonexistent_user' }
   }, res2);
+
+  pg.Pool.prototype.query = origQuery;
+  delete process.env.OG_DATABASE_URL;
+
   console.log('Status:', res2.getStatus());
   console.log('Cache-Control:', res2.getHeaders()['cache-control']);
   console.log('Includes 404 title:', res2.getBody().includes('@nonexistent_user not found | Connectly'));
   console.log('Includes noindex:', res2.getBody().includes('content="noindex, nofollow"'));
-  if (res2.getHeaders()['cache-control'] !== 'public, s-maxage=60') {
-    throw new Error(`Unexpected Cache-Control on 404: ${res2.getHeaders()['cache-control']}`);
+  if (res2.getStatus() !== 404 || res2.getHeaders()['cache-control'] !== 'public, s-maxage=60') {
+    throw new Error(`Unexpected response on 404: status=${res2.getStatus()}, cache-control=${res2.getHeaders()['cache-control']}`);
   }
 
   console.log('\n--- Test 3: Invalid Handle with illegal characters (400 + s-maxage=60) ---');
@@ -91,9 +100,8 @@ async function test() {
   console.log('Includes generic site image:', res5.getBody().includes('connectly-icon-512.png'));
 
   console.log('\n--- Test 6: DB-Failure Fallback Sends Cache-Control: no-store ---');
-  // Set invalid DB connection string to simulate DB outage on unknown handle query
-  process.env.DATABASE_URL = 'postgresql://invalid_user:invalid_password@127.0.0.1:54329/fake_db';
-  process.env.DATABASE_URL_POOLED = 'postgresql://invalid_user:invalid_password@127.0.0.1:54329/fake_db';
+  // Set invalid OG_DATABASE_URL to simulate DB outage on unknown handle query
+  process.env.OG_DATABASE_URL = 'postgresql://invalid_user:invalid_password@127.0.0.1:54329/fake_db';
   const res6 = createMockRes();
   await ogHandler({
     url: '/api/og?handle=unknown_db_user',
@@ -105,6 +113,23 @@ async function test() {
   console.log('Includes generic site fallback title:', res6.getBody().includes('Connectly - One Profile. Every Connection.'));
   if (res6.getHeaders()['cache-control'] !== 'no-store') {
     throw new Error(`Expected Cache-Control: no-store on DB failure fallback, received: ${res6.getHeaders()['cache-control']}`);
+  }
+
+  console.log('\n--- Test 7: Unset OG_DATABASE_URL Never Falls Back to DATABASE_URL ---');
+  delete process.env.OG_DATABASE_URL;
+  // Even if DATABASE_URL is present, og.mjs must refuse to read it and return generic no-store fallback
+  process.env.DATABASE_URL = 'postgresql://admin:super_secret@aws-pooler.supabase.com:6543/postgres';
+  const res7 = createMockRes();
+  await ogHandler({
+    url: '/api/og?handle=random_external_handle',
+    headers: { host: 'connectly.bio', 'user-agent': 'Twitterbot/1.0' },
+    query: { handle: 'random_external_handle' }
+  }, res7);
+  console.log('Status:', res7.getStatus());
+  console.log('Cache-Control:', res7.getHeaders()['cache-control']);
+  console.log('Includes generic site fallback title:', res7.getBody().includes('Connectly - One Profile. Every Connection.'));
+  if (res7.getHeaders()['cache-control'] !== 'no-store') {
+    throw new Error(`Expected Cache-Control: no-store when OG_DATABASE_URL is unset, received: ${res7.getHeaders()['cache-control']}`);
   }
 }
 
