@@ -81,10 +81,54 @@ All events are strictly typed in `src/utils/analytics.ts` and dispatch to `@verc
 
 ---
 
-## 3. Strict Zero-PII Compliance Guarantee
+## 3. Provider-Agnostic Analytics Architecture
+
+Vercel Analytics on the Hobby (free) plan tracks page views and Web Vitals, but custom events require a paid Pro subscription ($20/mo). To ensure Connectly founders have enterprise-grade funnel visibility without unexpected cloud bills, Connectly utilizes a **provider-agnostic analytics architecture**:
+
+```mermaid
+graph LR
+    App["UI Interaction (e.g. Share / Export)"] --> Track["trackEvent(name, props)"]
+    Track --> Clean["Sanitize Zero-PII"]
+    Clean --> Vercel["Vercel Adapter<br/>(Page views / Web Vitals)"]
+    Clean --> PostHog["PostHog Adapter<br/>(1M free events/mo, Cloud)"]
+    Clean --> Umami["Umami Adapter<br/>(Optional self-hosted / cloud)"]
+```
+
+### Free-Tier Tool Recommendation: PostHog Cloud
+
+| Criterion | PostHog Cloud (Recommended) | Umami Cloud |
+| :--- | :--- | :--- |
+| **Free Tier Volume** | **1,000,000 events / month** | 10,000 events / month |
+| **Hosting Overhead** | **Zero** (Managed Cloud, US & EU data centers) | Managed or Self-Hosted (requires Postgres + server) |
+| **Funnel Analysis** | **Built-in multi-step funnel visualization** | Basic event counting |
+| **Setup Friction** | **Paste 1 API key into Vercel** | Script tag or self-hosting deployment |
+| **Cost** | **$0 forever** under 1M events | $0 (10k) then $9/mo |
+
+**Recommendation Rationale**: PostHog Cloud offers 100x the event volume of Umami Cloud for free, requires zero server maintenance, and provides drag-and-drop funnel dropoff graphs directly matching Connectly's 6 lifecycle stages.
+
+### Environment Configuration (Names Only)
+
+Add to `.env` or Vercel Environment Variables:
+```bash
+# PostHog (Recommended)
+VITE_POSTHOG_API_KEY="phc_your_key_here"
+VITE_POSTHOG_HOST="https://us.i.posthog.com" # optional, defaults to US cloud
+
+# Umami (Alternative)
+VITE_UMAMI_WEBSITE_ID="your_umami_website_id"
+VITE_UMAMI_HOST="https://cloud.umami.is"
+```
+
+*Note: If no external keys are provided, `track()` operates safely as a clean no-op in production and logs to the browser developer console in development.*
+
+---
+
+## 4. Strict Zero-PII Compliance Guarantee
 
 Connectly strictly adheres to GDPR, CCPA, and privacy-first engineering:
 1. **No Identifiable PII**: User email addresses, real legal names, phone numbers, and physical addresses are NEVER included in analytics event payloads.
 2. **No Raw Handles**: Usernames and private URLs are excluded from custom event metadata to prevent re-identification across analytics exports.
-3. **Cookie-less by Default**: `@vercel/analytics` operates without third-party tracking cookies or cross-site fingerprinting.
-4. **Development Sandboxing**: In local development (`import.meta.env.DEV`), events are logged to the browser console for inspection without polluting production telemetry.
+3. **Anonymous Distinct IDs**: When PostHog is active, an anonymous random UUID (`connectly_anon_id`) is stored in `localStorage` to connect funnel stages without linking to personal identity.
+4. **Cookie-less Page Views**: Vercel Analytics operates without third-party tracking cookies or cross-site fingerprinting.
+5. **Development Sandboxing**: In local development (`import.meta.env.DEV`), events are logged to the browser console for inspection without polluting production telemetry.
+

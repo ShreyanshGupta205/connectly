@@ -19,6 +19,7 @@ import {
   isPublicProfileRoute, 
   isPosterRoute as checkIsPosterRoute 
 } from './utils/router';
+import { Analytics } from '@vercel/analytics/react';
 
 const AppContent: React.FC = () => {
   const { currentProfile, switchProfile, profiles } = useProfile();
@@ -168,8 +169,6 @@ const AppContent: React.FC = () => {
     </div>
   );
 };
-
-import { Analytics } from '@vercel/analytics/react';
 
 export default function App() {
   return (
