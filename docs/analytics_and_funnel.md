@@ -1,6 +1,6 @@
 # Connectly Growth Funnel & Analytics Architecture
 
-This document specifies the product analytics taxonomy, funnel metrics, and strict zero-PII data privacy guarantees implemented for Connectly using `@vercel/analytics`.
+This document specifies the product analytics taxonomy, funnel metrics, and best-effort redaction data privacy practices implemented for Connectly using `@vercel/analytics` and PostHog.
 
 ---
 
@@ -88,7 +88,7 @@ Vercel Analytics on the Hobby (free) plan tracks page views and Web Vitals, but 
 ```mermaid
 graph LR
     App["UI Interaction (e.g. Share / Export)"] --> Track["trackEvent(name, props)"]
-    Track --> Clean["Sanitize Zero-PII"]
+    Track --> Clean["Best-Effort Redaction"]
     Clean --> Vercel["Vercel Adapter<br/>(Page views / Web Vitals)"]
     Clean --> PostHog["PostHog Adapter<br/>(1M free events/mo, Cloud)"]
     Clean --> Umami["Umami Adapter<br/>(Optional self-hosted / cloud)"]
@@ -99,12 +99,13 @@ graph LR
 | Criterion | PostHog Cloud (Recommended) | Umami Cloud |
 | :--- | :--- | :--- |
 | **Free Tier Volume** | **1,000,000 events / month** | 10,000 events / month |
-| **Hosting Overhead** | **Zero** (Managed Cloud, US & EU data centers) | Managed or Self-Hosted (requires Postgres + server) |
+| **Official Pricing Link** | [posthog.com/pricing](https://posthog.com/pricing) | [umami.is/pricing](https://umami.is/pricing) |
+| **Hosting Overhead** | **Zero** (Managed Cloud, US & EU data centers) | Managed or Self-Hosted |
 | **Funnel Analysis** | **Built-in multi-step funnel visualization** | Basic event counting |
-| **Setup Friction** | **Paste 1 API key into Vercel** | Script tag or self-hosting deployment |
+| **Setup Friction** | **Paste 1 API key into Vercel** | Script tag or self-hosting |
 | **Cost** | **$0 forever** under 1M events | $0 (10k) then $9/mo |
 
-**Recommendation Rationale**: PostHog Cloud offers 100x the event volume of Umami Cloud for free, requires zero server maintenance, and provides drag-and-drop funnel dropoff graphs directly matching Connectly's 6 lifecycle stages.
+**Recommendation Rationale**: PostHog Cloud offers 1,000,000 product analytics events per month free (resets monthly on the 1st, zero credit card required, verified at [posthog.com/pricing](https://posthog.com/pricing)).
 
 ### Environment Configuration (Names Only)
 
@@ -123,12 +124,20 @@ VITE_UMAMI_HOST="https://cloud.umami.is"
 
 ---
 
-## 4. Strict Zero-PII Compliance Guarantee
+## 4. Best-Effort Redaction & Privacy Policy
 
-Connectly strictly adheres to GDPR, CCPA, and privacy-first engineering:
-1. **No Identifiable PII**: User email addresses, real legal names, phone numbers, and physical addresses are NEVER included in analytics event payloads.
-2. **No Raw Handles**: Usernames and private URLs are excluded from custom event metadata to prevent re-identification across analytics exports.
-3. **Anonymous Distinct IDs**: When PostHog is active, an anonymous random UUID (`connectly_anon_id`) is stored in `localStorage` to connect funnel stages without linking to personal identity.
+Connectly implements best-effort client-side redaction and privacy-first telemetry:
+1. **Best-Effort Redaction**: Email addresses, passwords, phone numbers, and full names are actively sanitized from telemetry before transmission.
+2. **No Raw Handles**: Usernames and private URLs are excluded from custom event metadata to prevent cross-dataset re-identification.
+3. **Anonymous Distinct IDs**: When PostHog is active, a pseudonymous random UUID (`connectly_anon_id`) is stored in `localStorage` to connect funnel stages without linking to personal identity.
 4. **Cookie-less Page Views**: Vercel Analytics operates without third-party tracking cookies or cross-site fingerprinting.
 5. **Development Sandboxing**: In local development (`import.meta.env.DEV`), events are logged to the browser console for inspection without polluting production telemetry.
+
+### 5-Line Privacy Policy Snippet (For Founder Review)
+1. **What We Collect**: We collect anonymous interaction events (such as button clicks, theme selections, QR code exports, and page views) to understand product performance.
+2. **What We Never Collect**: We apply best-effort client-side redaction to exclude personal identifiable information (PII) including email addresses, passwords, phone numbers, and full names.
+3. **Local Storage Identifier**: We generate a pseudonymous random identifier (`connectly_anon_id`) stored in your browser's `localStorage` solely to connect multi-step funnel interactions without tracking you across external websites.
+4. **Analytics Providers**: Event telemetry is processed via PostHog Cloud (or Umami) and Vercel Analytics under strict data-protection agreements without third-party advertising cookies.
+5. **User Control**: You can reset your anonymous identifier at any time by clearing your browser's local storage or enabling Do-Not-Track in your browser settings.
+
 

@@ -28,18 +28,24 @@ const FALLBACK_PROFILES = {
   }
 };
 
-const connectionString = process.env.DATABASE_URL;
-
 let pool = null;
+let currentConnStr = null;
+
 function getPool() {
+  const connectionString = process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL;
   if (!connectionString) {
     return null;
   }
-  if (!pool) {
+  if (!pool || currentConnStr !== connectionString) {
+    if (pool) {
+      try { pool.end(); } catch (e) {}
+    }
+    currentConnStr = connectionString;
     pool = new pg.Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },
-      max: 2,
+      max: 1, // Keep pool minimal in serverless edge environment
+      idleTimeoutMillis: 1000,
       connectionTimeoutMillis: 3000
     });
   }
@@ -151,11 +157,12 @@ export default async function handler(req, res) {
     // Abuse / rate / input validation: handle must be <= 30 chars and match allowed identifier regex
     if (cleanHandle.length > 30 || !/^[a-z0-9_.-]+$/.test(cleanHandle)) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.setHeader('Cache-Control', 's-maxage=60');
+      res.setHeader('Cache-Control', 'public, s-maxage=60');
       return res.status(400).send(`<!DOCTYPE html><html><body><h1>400 Invalid Handle</h1><p>Username handles may only contain letters, numbers, periods, dashes, and underscores (max 30 characters).</p></body></html>`);
     }
 
     let profile = FALLBACK_PROFILES[cleanHandle] || null;
+    let dbFailed = false;
 
     // 3. Database query: only fetch public profile fields (name, tagline, bio, avatar_url, theme_id)
     if (!profile) {
@@ -179,9 +186,16 @@ export default async function handler(req, res) {
           }
         }
       } catch (dbError) {
-        // If DB is unreachable and handle is unknown, gracefully return generic site OG tags
+        dbFailed = true;
         console.warn('Database connection failed in api/og.mjs:', dbError.message);
       }
+    }
+
+    // If DB is unreachable and handle was not found in static fallback, return generic site OG tags with no-store
+    if (dbFailed && !profile) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).send(getGenericSiteHtml(siteUrl));
     }
 
   // 4. Unknown Handle Handling: If no handle is matched, return 404 with noindex and claim link
@@ -228,7 +242,7 @@ export default async function handler(req, res) {
 </html>`;
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
+    res.setHeader('Cache-Control', 'public, s-maxage=60');
     return res.status(404).send(notFoundHtml);
   }
 
@@ -295,12 +309,12 @@ export default async function handler(req, res) {
 </html>`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=86400');
+  res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=60');
   return res.status(200).send(html);
   } catch (unexpectedError) {
     console.error('Unhandled exception in api/og.mjs:', unexpectedError);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Cache-Control', 's-maxage=60');
+    res.setHeader('Cache-Control', 'no-store');
     return res.status(200).send(getGenericSiteHtml(siteUrl));
   }
 }

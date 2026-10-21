@@ -8,7 +8,7 @@
     "server": "node server/index.mjs",
     "start": "node server/index.mjs",
     "build": "tsc -b && vite build",
-    "test": "node --test tests/*.test.mjs && node tests/test_og_handler.mjs",
+    "test": "node --test tests/*.test.mjs && node tests/test_og_handler.mjs && node tests/test_vercel_rewrites.mjs",
     "lint": "oxlint",
     "preview": "vite preview"
   },

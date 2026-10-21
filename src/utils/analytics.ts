@@ -2,7 +2,7 @@ import { track as vercelTrack } from '@vercel/analytics';
 
 /**
  * Connectly Custom Event Taxonomy
- * Strict zero-PII guarantee: Never log emails, real names, passwords, phone numbers, or raw IP addresses.
+ * Best-effort redaction: Never log emails, real names, passwords, phone numbers, or raw IP addresses.
  */
 export interface EventProperties {
   profile_claimed: {
@@ -46,7 +46,7 @@ export interface AnalyticsAdapter {
 
 /**
  * Generates or retrieves an anonymous, random distinct ID for funnel tracking.
- * Contains ZERO PII.
+ * Applies best-effort redaction to avoid associating interactions with personal identity.
  */
 function getAnonymousDistinctId(): string {
   if (typeof window === 'undefined') return 'server';
