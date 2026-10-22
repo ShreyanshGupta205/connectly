@@ -32,6 +32,8 @@ import {
 } from './services/agentScheduler.mjs';
 import { executeContentTask, generateDeterministicDraft } from './agents/content.mjs';
 import { validateContentCopy, executeBrandGateReview } from './agents/brandGate.mjs';
+import { executeOutreachTask } from './agents/outreach.mjs';
+import { executeQaTask, auditProfileIntegrity } from './agents/qaEngineer.mjs';
 import { processAgentQueueOnce } from './services/agentWorker.mjs';
 
 dotenv.config();
@@ -1501,10 +1503,49 @@ app.post('/api/agent/brand-gate/validate', (req, res) => {
 // 31. Trigger Worker Queue Processing Pass
 app.post('/api/agent/worker/process', async (req, res) => {
   try {
-    const result = await processAgentQueueOnce(pool);
+    const result = await processAgentQueueOnce(pool, memoryProfiles);
     res.json({
       success: true,
       ...result
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── PR #4: Outreach/Community Agent + QA/Engineer Agent Endpoints ──
+
+// 32. Outreach Agent: Scout Builder Leads & Stage Invites
+app.post('/api/agent/outreach/scout', async (req, res) => {
+  try {
+    const { targetNiche = 'Hackathon Competitor', limit = 3 } = req.body || {};
+    const dummyTask = {
+      id: 'outreach_manual_' + Date.now(),
+      input: { targetNiche, limit }
+    };
+    const result = await executeOutreachTask(pool, dummyTask);
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 33. QA Engineer Agent: Audit Profile Links & Activation Gaps
+app.get('/api/agent/qa/audit', async (req, res) => {
+  try {
+    const { username } = req.query;
+    const usernamesToCheck = username ? [username] : [];
+    const dummyTask = {
+      id: 'qa_manual_' + Date.now(),
+      input: { usernamesToCheck }
+    };
+    const report = await executeQaTask(pool, dummyTask, memoryProfiles);
+    res.json({
+      success: true,
+      report
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
