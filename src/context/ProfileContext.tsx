@@ -22,6 +22,7 @@ import {
   apiCreateProfile,
   apiUpdateProfile,
   apiDeleteProfile,
+  apiRecordProfileShare,
   apiLikeProfile,
   apiRecordProfileView,
   apiRecordLinkClick,
@@ -342,9 +343,12 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
         updated = activatedProfile;
       });
 
-      // Async sync to Firestore & PostgreSQL
+      // Async sync to Firestore & PostgreSQL (passing caller auth credentials)
       saveProfileToFirestore(updated);
-      apiUpdateProfile(currentUsername, updated);
+      apiUpdateProfile(currentUsername, updated, {
+        userId: currentUser?.id || currentProfile.id,
+        userEmail: currentUser?.email || currentProfile.email
+      });
 
       if (updates.bio !== undefined || updates.links !== undefined || updates.avatarUrl !== undefined) {
         trackEvent('profile_completed', {
@@ -374,7 +378,10 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
       });
 
       saveProfileToFirestore(updated);
-      apiUpdateProfile(username, updated);
+      apiUpdateProfile(username, updated, {
+        userId: currentUser?.id || currentProfile.id,
+        userEmail: currentUser?.email || currentProfile.email
+      });
       return {
         ...prev,
         [username]: updated,
@@ -397,7 +404,10 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
       delete next[username];
       return next;
     });
-    apiDeleteProfile(username);
+    apiDeleteProfile(username, {
+      userId: currentUser?.id || currentProfile.id,
+      userEmail: currentUser?.email || currentProfile.email
+    });
     if (currentUsername === username) {
       const firstKey = Object.keys(profiles).find(k => k !== username) || 'shreyansh';
       setCurrentUsername(firstKey);
@@ -595,7 +605,8 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
       });
 
       saveProfileToFirestore(updated);
-      apiUpdateProfile(clean, updated);
+      // Atomic share record via dedicated endpoint (persists shares and updates DB without exposing full profile write)
+      apiRecordProfileShare(clean, platform);
 
       return {
         ...prev,
