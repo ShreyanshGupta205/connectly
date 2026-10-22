@@ -35,6 +35,8 @@ import { validateContentCopy, executeBrandGateReview } from './agents/brandGate.
 import { executeOutreachTask } from './agents/outreach.mjs';
 import { executeQaTask, auditProfileIntegrity } from './agents/qaEngineer.mjs';
 import { processAgentQueueOnce } from './services/agentWorker.mjs';
+import { createExperiment, recordObservation, listExperiments } from './services/experimentEngine.mjs';
+import { registerPromptVersion, recordPromptEvaluation, getActivePromptVersion } from './services/promptEvolution.mjs';
 
 dotenv.config();
 
@@ -1546,6 +1548,135 @@ app.get('/api/agent/qa/audit', async (req, res) => {
     res.json({
       success: true,
       report
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── PR #5: Autonomous Feedback Loop (Measure -> Learn -> Evolve) Endpoints ──
+
+// 34. A/B Growth Experiments: List Experiments
+app.get('/api/agent/experiments', async (req, res) => {
+  try {
+    const { status } = req.query;
+    const experiments = await listExperiments(pool, { status });
+    res.json({
+      success: true,
+      experiments
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 35. A/B Growth Experiments: Register Experiment
+app.post('/api/agent/experiments', async (req, res) => {
+  try {
+    const { hypothesis, variantA, variantB, metric } = req.body || {};
+    if (!hypothesis || !variantA || !variantB) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required experiment fields: hypothesis, variantA, variantB.'
+      });
+    }
+
+    const experiment = await createExperiment(pool, {
+      hypothesis,
+      variantA,
+      variantB,
+      metric: metric || 'shares'
+    });
+
+    res.status(201).json({
+      success: true,
+      experiment
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 36. A/B Growth Experiments: Record Conversion Observation
+app.post('/api/agent/experiments/:id/observe', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { variant, didConvert = false } = req.body || {};
+    if (variant !== 'a' && variant !== 'b') {
+      return res.status(400).json({ success: false, error: '"variant" must be "a" or "b".' });
+    }
+
+    const updated = await recordObservation(pool, id, variant, Boolean(didConvert));
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'Experiment not found.' });
+    }
+
+    res.json({
+      success: true,
+      experiment: updated
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 37. Prompt Evolution: Register Prompt Version
+app.post('/api/agent/prompts', async (req, res) => {
+  try {
+    const { agent, version, systemPrompt, benchmarkScore, isActive } = req.body || {};
+    if (!agent || !version || !systemPrompt) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required prompt version fields: agent, version, systemPrompt.'
+      });
+    }
+
+    const record = await registerPromptVersion(pool, {
+      agent,
+      version,
+      systemPrompt,
+      benchmarkScore,
+      isActive: isActive !== undefined ? isActive : true
+    });
+
+    res.status(201).json({
+      success: true,
+      promptVersion: record
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 38. Prompt Evolution: Get Active Version for Agent
+app.get('/api/agent/prompts/:agent/active', async (req, res) => {
+  try {
+    const { agent } = req.params;
+    const activePrompt = await getActivePromptVersion(pool, agent);
+    res.json({
+      success: true,
+      activePrompt
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 39. Prompt Evolution: Record Brand Gate Review & Auto-Rollback Guard
+app.post('/api/agent/prompts/evaluate', async (req, res) => {
+  try {
+    const { agent, version, approved } = req.body || {};
+    if (!agent || !version || typeof approved !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        error: 'agent, version, and approved (boolean) are required.'
+      });
+    }
+
+    const result = await recordPromptEvaluation(pool, { agent, version, approved });
+    res.json({
+      success: true,
+      ...result
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
