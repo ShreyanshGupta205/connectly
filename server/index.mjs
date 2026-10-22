@@ -2,6 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import pg from 'pg';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
 
 dotenv.config();
 
@@ -833,6 +836,388 @@ app.get('/api/admin/export', (req, res) => {
     totalProfiles: Object.keys(memoryProfiles).length,
     profiles: memoryProfiles,
   });
+});
+
+// ── AI Mission Control & Growth Engine Endpoints ──
+
+const DEFAULT_QUEUE_DIR = process.env.AGENT_QUEUE_DIR || path.join(process.env.USERPROFILE || 'C:\\Users\\Shreyansh Gupta', 'agent-setup', 'queue');
+const PENDING_QUEUE_FILE = path.join(DEFAULT_QUEUE_DIR, 'pending.md');
+
+// 13. System Telemetry & Local AI Health
+app.get('/api/ai/system', async (req, res) => {
+  // Query Ollama status
+  let ollama = { online: false, version: 'Unknown', runningModels: [] };
+  try {
+    const vRes = await fetch('http://127.0.0.1:11434/api/version', { signal: AbortSignal.timeout(2000) });
+    if (vRes.ok) {
+      const vData = await vRes.json();
+      ollama.online = true;
+      ollama.version = vData.version || '0.40.6';
+    }
+    const psRes = await fetch('http://127.0.0.1:11434/api/ps', { signal: AbortSignal.timeout(2000) });
+    if (psRes.ok) {
+      const psData = await psRes.json();
+      ollama.runningModels = psData.models || [];
+    }
+  } catch {
+    // Offline or timed out
+  }
+
+  // Query GPU Telemetry via nvidia-smi
+  let gpu = { total: 4096, used: 0, free: 4096, util: 0, modelName: 'NVIDIA GeForce RTX 3050 A Laptop GPU' };
+  try {
+    const smi = execSync('nvidia-smi --query-gpu=name,memory.total,memory.used,memory.free,utilization.gpu --format=csv,noheader,nounits', { encoding: 'utf-8', timeout: 2000 });
+    const parts = smi.trim().split(',').map(s => s.trim());
+    if (parts.length >= 5) {
+      gpu = {
+        modelName: parts[0],
+        total: parseFloat(parts[1]) || 4096,
+        used: parseFloat(parts[2]) || 0,
+        free: parseFloat(parts[3]) || 4096,
+        util: parseFloat(parts[4]) || 0,
+      };
+    }
+  } catch {
+    // Fallback if nvidia-smi is not available
+  }
+
+  // Query Hermes Multi-Agent Gateway Process
+  let hermes = { running: false, pids: [], gatewayPort: 5000 };
+  try {
+    const ps = execSync('tasklist /FI "IMAGENAME eq python.exe" /FO CSV /NH', { encoding: 'utf-8', timeout: 2000 });
+    const lines = ps.trim().split('\n').filter(Boolean);
+    const pids = [];
+    for (const line of lines) {
+      const match = line.match(/"python\.exe","(\d+)"/i);
+      if (match) pids.push(parseInt(match[1], 10));
+    }
+    if (pids.length > 0) {
+      hermes = { running: true, pids, gatewayPort: 5000 };
+    }
+  } catch {
+    // Fallback
+  }
+
+  res.json({
+    success: true,
+    timestamp: new Date().toISOString(),
+    ollama,
+    gpu,
+    hermes,
+    server: {
+      port: PORT,
+      mode: isPostgresReady ? 'PostgreSQL' : 'Memory Store Fallback',
+      uptime: process.uptime(),
+    }
+  });
+});
+
+// Helper: Parse pending.md drafts
+function parsePendingQueue(filePath) {
+  if (!fs.existsSync(filePath)) return [];
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const sections = content.split(/(?=###\s*\[DRAFT\s*\d+\])/g);
+  const drafts = [];
+
+  for (const sec of sections) {
+    if (!sec.trim().startsWith('### [DRAFT')) continue;
+    const headerMatch = sec.match(/###\s*\[DRAFT\s*(\d+)\]\s*([^\n\r]*)/i);
+    const draftNumber = headerMatch ? parseInt(headerMatch[1], 10) : drafts.length + 1;
+    const draftTitle = headerMatch ? headerMatch[2].trim() : `Draft ${draftNumber}`;
+
+    const statusMatch = sec.match(/\*\*Status\*\*:\s*([^\n\r]+)/i);
+    const status = statusMatch ? statusMatch[1].trim() : '⏳ PENDING APPROVAL';
+
+    const platformMatch = sec.match(/\*\*Platform\*\*:\s*([^\n\r]+)/i);
+    const platform = platformMatch ? platformMatch[1].trim() : 'X / Twitter';
+
+    const timeMatch = sec.match(/\*\*Proposed Time\*\*:\s*([^\n\r]+)/i);
+    const proposedTime = timeMatch ? timeMatch[1].trim() : 'Immediate';
+
+    const audienceMatch = sec.match(/\*\*Target Audience\*\*:\s*([^\n\r]+)/i);
+    const targetAudience = audienceMatch ? audienceMatch[1].trim() : 'Builders & Founders';
+
+    const copyMatch = sec.match(/```text\s*([\s\S]*?)\s*```/);
+    let copyText = '';
+    if (copyMatch) {
+      copyText = copyMatch[1].trim();
+    } else {
+      const lines = sec.split('\n').filter(l => !l.startsWith('#') && !l.startsWith('- **') && l.trim().length > 0);
+      copyText = lines.join('\n').trim();
+    }
+
+    const hasPlaceholders = copyText.includes('{{SITE_URL}}') || copyText.includes('[NEEDS FACT]') || copyText.includes('{{');
+    const isApproved = status.includes('APPROVED');
+    const isDiscarded = status.includes('DISCARDED');
+
+    drafts.push({
+      id: `DRAFT_${draftNumber}`,
+      draftNumber,
+      title: draftTitle,
+      status,
+      platform,
+      proposedTime,
+      targetAudience,
+      copyText,
+      hasPlaceholders,
+      isApproved,
+      isDiscarded,
+      charCount: copyText.length,
+      rawMarkdown: sec.trim()
+    });
+  }
+  return drafts;
+}
+
+// 14. Staged Approval Queue (Read pending.md)
+app.get('/api/ai/queue', (req, res) => {
+  try {
+    const queueFile = PENDING_QUEUE_FILE;
+    if (!fs.existsSync(queueFile)) {
+      return res.json({
+        success: true,
+        queuePath: queueFile,
+        drafts: [],
+        stats: { total: 0, pending: 0, approved: 0, withPlaceholders: 0 }
+      });
+    }
+
+    const drafts = parsePendingQueue(queueFile);
+    const pendingCount = drafts.filter(d => !d.isApproved && !d.isDiscarded).length;
+    const approvedCount = drafts.filter(d => d.isApproved).length;
+    const placeholderCount = drafts.filter(d => d.hasPlaceholders).length;
+
+    res.json({
+      success: true,
+      queuePath: queueFile,
+      drafts,
+      stats: {
+        total: drafts.length,
+        pending: pendingCount,
+        approved: approvedCount,
+        withPlaceholders: placeholderCount
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 15. Staged Approval Queue (Approve, Discard, Edit Draft)
+app.post('/api/ai/queue/update', (req, res) => {
+  try {
+    const { draftNumber, action, updatedCopy } = req.body;
+    if (!draftNumber || !action) {
+      return res.status(400).json({ success: false, error: 'draftNumber and action required' });
+    }
+
+    const queueFile = PENDING_QUEUE_FILE;
+    if (!fs.existsSync(queueFile)) {
+      return res.status(404).json({ success: false, error: 'Queue file not found' });
+    }
+
+    let content = fs.readFileSync(queueFile, 'utf-8');
+    const draftRegex = new RegExp(`(###\\s*\\[DRAFT\\s*${draftNumber}\\][\\s\\S]*?)(?=(###\\s*\\[DRAFT\\s*\\d+\\]|$))`, 'i');
+    const match = content.match(draftRegex);
+
+    if (!match) {
+      return res.status(404).json({ success: false, error: `Draft ${draftNumber} not found` });
+    }
+
+    let draftBlock = match[1];
+
+    if (action === 'approve') {
+      if (draftBlock.includes('**Status**:')) {
+        draftBlock = draftBlock.replace(/\*\*Status\*\*:\s*[^\n\r]+/i, '**Status**: ✅ APPROVED (Ready to Post)');
+      } else {
+        draftBlock = draftBlock.replace(/(###[^\n]+\n)/, '$1- **Status**: ✅ APPROVED (Ready to Post)\n');
+      }
+      const approvedPath = path.join(DEFAULT_QUEUE_DIR, 'approved.md');
+      fs.appendFileSync(approvedPath, `\n\n---\nApproved on ${new Date().toISOString()}:\n${draftBlock.trim()}\n`);
+    } else if (action === 'discard') {
+      draftBlock = draftBlock.replace(/\*\*Status\*\*:\s*[^\n\r]+/i, '**Status**: ❌ DISCARDED');
+    } else if (action === 'edit' && updatedCopy !== undefined) {
+      if (draftBlock.includes('```text')) {
+        draftBlock = draftBlock.replace(/```text[\s\S]*?```/, '```text\n' + updatedCopy.trim() + '\n```');
+      } else {
+        draftBlock += '\n\n```text\n' + updatedCopy.trim() + '\n```';
+      }
+    } else if (action === 'replace_placeholders') {
+      const siteUrl = req.body.siteUrl || 'https://connectly-hazel.vercel.app';
+      draftBlock = draftBlock.replaceAll('{{SITE_URL}}', siteUrl);
+    }
+
+    content = content.replace(draftRegex, draftBlock);
+    fs.writeFileSync(queueFile, content, 'utf-8');
+
+    res.json({ success: true, message: `Draft ${draftNumber} updated: ${action}`, draftBlock });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 16. On-Demand AI Post Generation via Local Ollama
+app.post('/api/ai/generate', async (req, res) => {
+  try {
+    const {
+      platform = 'x',
+      audience = 'Hackathon Builders',
+      hookType = 'contrarian',
+      customPrompt = '',
+      model = 'qwen2.5:3b',
+      stageToQueue = false
+    } = req.body;
+
+    const systemPrompt = `You are the authentic growth engine and developer voice for Connectly (https://connectly-hazel.vercel.app).
+Connectly is a biolink, builder showcase, and networking platform built by Shreyansh Gupta (IIT Madras developer, top 0.6% Google Hackathon builder).
+Key features:
+1. Instant printable desk posters (A4 table tent, badge, sticker presets with custom QR codes).
+2. 1-tap vCard (.vcf) contact saving to phone address books.
+3. Fast edge-routed vanity profiles (/@shreyansh) with Aurora Glass aesthetics and zero tracking/PII.
+4. Builder showcase centralizing GitHub repos, Devfolio hackathons, live demos, and socials.
+
+Rules for copy:
+- Write in first person or direct developer tone.
+- Absolutely NO generic corporate filler or AI buzzwords ("revolutionize", "game changer", "dive into", "unleash", "delve").
+- Start with a punchy hook according to the hook style.
+- Include a specific, clear call to action pointing to https://connectly-hazel.vercel.app/@shreyansh or connectly.bio.
+- Format for the platform:
+  * For X/Twitter: Under 280 characters if possible, or tight thread starter (under 400 chars).
+  * For LinkedIn: Clean line breaks, structured takeaways, honest founder reflection.
+  * For Instagram/Threads: Visual context, relatable builder pain, clean tags.`;
+
+    const userPrompt = `Platform: ${platform.toUpperCase()}
+Target Audience: ${audience}
+Hook Style: ${hookType}
+${customPrompt ? `Founder Note/Topic: ${customPrompt}` : 'Topic: Showcase how fast Connectly turns hackathon demo tables into 1-tap connection hubs with printable QR posters and vCard saving.'}
+
+Generate ready-to-post copy now. Return ONLY the final copy text, without commentary or wrapper text.`;
+
+    const startTime = Date.now();
+    const ollamaResponse = await fetch('http://127.0.0.1:11434/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        stream: false,
+        options: {
+          temperature: 0.7,
+          num_ctx: 2048
+        }
+      }),
+      signal: AbortSignal.timeout(30000)
+    });
+
+    if (!ollamaResponse.ok) {
+      const errText = await ollamaResponse.text();
+      return res.status(502).json({ success: false, error: `Ollama error: ${errText}` });
+    }
+
+    const data = await ollamaResponse.json();
+    const generatedText = (data.message?.content || '').trim().replace(/^"|"$/g, '');
+    const durationMs = Date.now() - startTime;
+
+    let stagedDraftNumber = null;
+    if (stageToQueue) {
+      try {
+        const queueFile = PENDING_QUEUE_FILE;
+        if (fs.existsSync(queueFile)) {
+          const currentDrafts = parsePendingQueue(queueFile);
+          stagedDraftNumber = currentDrafts.length + 1;
+          const newDraftBlock = `\n\n### [DRAFT ${stagedDraftNumber}] AI Studio Generated — ${platform.toUpperCase()}
+- **Status**: ⏳ PENDING APPROVAL
+- **Platform**: ${platform.toUpperCase()}
+- **Target Audience**: ${audience}
+- **Generated Model**: ${model}
+- **Proposed Time**: Immediate
+- **Copy**:
+\`\`\`text
+${generatedText}
+\`\`\`
+`;
+          fs.appendFileSync(queueFile, newDraftBlock, 'utf-8');
+        }
+      } catch (queueErr) {
+        console.warn('Could not stage to pending.md:', queueErr.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      text: generatedText,
+      model,
+      durationMs,
+      staged: stageToQueue,
+      stagedDraftNumber,
+      platform,
+      audience
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 17. North Star Funnel & Growth Activation Metrics
+app.get('/api/ai/funnel', async (req, res) => {
+  try {
+    const profiles = Object.values(memoryProfiles);
+    const totalProfiles = profiles.length;
+    
+    // Growth funnel criteria
+    const profilesWith1Link = profiles.filter(p => (p.links || []).length >= 1).length;
+    const profilesWith3Links = profiles.filter(p => (p.links || []).length >= 3).length;
+    const profilesWithShares = profiles.filter(p => (p.stats?.shares || 0) >= 1).length;
+    
+    // Fully activated: >= 3 links AND >= 1 share
+    const activatedProfiles = profiles.filter(p => (p.links || []).length >= 3 && (p.stats?.shares || 0) >= 1);
+    const activatedCount = activatedProfiles.length;
+    const GOAL_ACTIVATIONS = 30;
+    const progressPercent = Math.min(100, Math.round((activatedCount / GOAL_ACTIVATIONS) * 100));
+
+    // Platform totals
+    const totalViews = profiles.reduce((acc, p) => acc + (p.stats?.views || 0), 0);
+    const totalClicks = profiles.reduce((acc, p) => acc + (p.links || []).reduce((c, l) => c + (l.clicks || 0), 0), 0);
+    const totalQrScans = profiles.reduce((acc, p) => acc + (p.stats?.qrScans || 0), 0);
+    const totalShares = profiles.reduce((acc, p) => acc + (p.stats?.shares || 0), 0);
+
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      goal: {
+        target: GOAL_ACTIVATIONS,
+        current: activatedCount,
+        progressPercent,
+        remaining: Math.max(0, GOAL_ACTIVATIONS - activatedCount),
+        description: '30 Activated Profiles (3+ links & >= 1 share in first 30 days)'
+      },
+      funnel: [
+        { stage: 'Profiles Created', count: totalProfiles, percent: 100 },
+        { stage: 'Added 1+ Links', count: profilesWith1Link, percent: totalProfiles ? Math.round((profilesWith1Link / totalProfiles) * 100) : 0 },
+        { stage: 'Added 3+ Links', count: profilesWith3Links, percent: totalProfiles ? Math.round((profilesWith3Links / totalProfiles) * 100) : 0 },
+        { stage: 'Shared Profile', count: profilesWithShares, percent: totalProfiles ? Math.round((profilesWithShares / totalProfiles) * 100) : 0 },
+        { stage: 'Fully Activated', count: activatedCount, percent: totalProfiles ? Math.round((activatedCount / totalProfiles) * 100) : 0 }
+      ],
+      metrics: {
+        totalViews,
+        totalClicks,
+        totalQrScans,
+        totalShares,
+      },
+      activatedBuilders: activatedProfiles.map(p => ({
+        username: p.username,
+        name: p.name,
+        linksCount: (p.links || []).length,
+        shares: p.stats?.shares || 0,
+        views: p.stats?.views || 0,
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Export app for Vercel Serverless Functions & testing

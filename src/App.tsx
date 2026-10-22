@@ -23,6 +23,7 @@ import { Analytics } from '@vercel/analytics/react';
 const DashboardLayout = lazy(() => import('./components/dashboard/DashboardLayout').then(m => ({ default: m.DashboardLayout })));
 const PrintablePoster = lazy(() => import('./components/poster/PrintablePoster').then(m => ({ default: m.PrintablePoster })));
 const AdminPanel = lazy(() => import('./components/admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
+const AIMissionControl = lazy(() => import('./components/admin/AIMissionControl').then(m => ({ default: m.AIMissionControl })));
 const PrivacyPolicyView = lazy(() => import('./components/legal/PrivacyPolicyView').then(m => ({ default: m.PrivacyPolicyView })));
 
 const RouteLoadingFallback: React.FC = () => (
@@ -142,6 +143,10 @@ const AppContent: React.FC = () => {
             <AdminPanel navigateTo={navigateTo} />
           )}
 
+          {currentRoute === 'mission-control' && (
+            <AIMissionControl navigateTo={navigateTo} />
+          )}
+
           {currentRoute === 'privacy' && (
             <PrivacyPolicyView navigateTo={navigateTo} />
           )}
@@ -158,6 +163,7 @@ const AppContent: React.FC = () => {
           {currentRoute !== 'landing' &&
            currentRoute !== 'dashboard' &&
            currentRoute !== 'admin' &&
+           currentRoute !== 'mission-control' &&
            currentRoute !== 'privacy' &&
            !isPublicProfile &&
            !isPosterRoute && (
