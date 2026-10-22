@@ -48,8 +48,14 @@ export async function executeTick(pool, memoryProfiles = {}) {
 /**
  * Start the autonomous periodic scheduler
  */
-export function startScheduler(pool, memoryProfiles = {}, customIntervalMs = null) {
-  if (isRunning) return;
+export function startScheduler(pool, memoryProfiles = {}, customIntervalMs = null, force = false) {
+  if (isRunning) return false;
+
+  const isEnabled = force || (process.env.AGENTS_ENABLED === 'true');
+  if (!isEnabled) {
+    console.log('[Scheduler] Start skipped: AGENTS_ENABLED is false or unset. Set AGENTS_ENABLED=true to run agent runtime locally.');
+    return false;
+  }
 
   if (customIntervalMs) {
     intervalMs = customIntervalMs;

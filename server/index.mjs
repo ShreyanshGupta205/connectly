@@ -1693,8 +1693,12 @@ if (isDirectExecution && !process.env.VERCEL) {
   app.listen(PORT, async () => {
     console.log(`🚀 Connectly Production Backend Server running on http://localhost:${PORT}`);
     await initDatabase();
-    // Launch autonomous background scheduler
-    startScheduler(pool, memoryProfiles);
+    // Launch autonomous background scheduler only if AGENTS_ENABLED is explicitly enabled
+    if (process.env.AGENTS_ENABLED === 'true') {
+      startScheduler(pool, memoryProfiles);
+    } else {
+      console.log('🛑 Agent background scheduler disabled by default (AGENTS_ENABLED is false/unset). Local agent runtime remains idle.');
+    }
   });
 } else if (process.env.VERCEL && process.env.NODE_ENV !== 'test') {
   initDatabase().catch(err => console.error('Vercel DB Init Error:', err));

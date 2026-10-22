@@ -159,8 +159,16 @@ describe('PR #2: Orchestrator + Growth Analyst (Observe & Plan Loop)', () => {
     const initialStatus = getSchedulerStatus();
     assert.equal(initialStatus.isRunning, false);
 
-    // Start with 10s test interval
-    startScheduler(null, {}, 10000);
+    // Test AGENTS_ENABLED=false prevents starting
+    process.env.AGENTS_ENABLED = 'false';
+    const blockedStart = startScheduler(null, {}, 10000);
+    assert.equal(blockedStart, false);
+    assert.equal(getSchedulerStatus().isRunning, false);
+
+    // Test AGENTS_ENABLED=true allows starting
+    process.env.AGENTS_ENABLED = 'true';
+    const allowedStart = startScheduler(null, {}, 10000);
+    assert.notEqual(allowedStart, false);
     const runningStatus = getSchedulerStatus();
     assert.equal(runningStatus.isRunning, true);
     assert.equal(runningStatus.intervalMs, 10000);
