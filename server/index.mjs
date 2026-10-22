@@ -22,6 +22,14 @@ import {
 import { 
   runAgentTask 
 } from './services/agentRunner.mjs';
+import { runGrowthAnalysis } from './agents/analyst.mjs';
+import { runOrchestratorCycle } from './agents/orchestrator.mjs';
+import { 
+  startScheduler, 
+  stopScheduler, 
+  getSchedulerStatus, 
+  executeTick 
+} from './services/agentScheduler.mjs';
 
 dotenv.config();
 
@@ -1387,8 +1395,75 @@ app.get('/api/agent/learnings', async (req, res) => {
   }
 });
 
+// ── PR #2: Orchestrator + Growth Analyst Observe & Plan Loop ──
+
+// 25. Growth Analyst Observation & Bottleneck Report
+app.get('/api/agent/analyst/report', async (req, res) => {
+  try {
+    const report = await runGrowthAnalysis(pool, memoryProfiles);
+    res.json({
+      success: true,
+      report
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 26. Trigger Orchestrator Autonomous Cycle (Observe -> Plan -> Enqueue)
+app.post('/api/agent/orchestrator/cycle', async (req, res) => {
+  try {
+    const result = await runOrchestratorCycle(pool, memoryProfiles);
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 27. Autonomous Scheduler Status
+app.get('/api/agent/scheduler/status', (req, res) => {
+  try {
+    const status = getSchedulerStatus();
+    res.json({
+      success: true,
+      ...status
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 28. Toggle Autonomous Scheduler
+app.post('/api/agent/scheduler/toggle', (req, res) => {
+  try {
+    const { active, intervalMs } = req.body || {};
+    if (typeof active !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        error: '"active" boolean field is required.'
+      });
+    }
+
+    if (active) {
+      startScheduler(pool, memoryProfiles, intervalMs);
+    } else {
+      stopScheduler();
+    }
+
+    res.json({
+      success: true,
+      ...getSchedulerStatus()
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Export app, pool, and initDatabase for tests and serverless execution
-export { pool, initDatabase };
+export { pool, initDatabase, memoryProfiles };
 export default app;
 
 // Start Server & Initialize Database (when running as standalone Node process)
@@ -1397,9 +1472,12 @@ if (isDirectExecution && !process.env.VERCEL) {
   app.listen(PORT, async () => {
     console.log(`🚀 Connectly Production Backend Server running on http://localhost:${PORT}`);
     await initDatabase();
+    // Launch autonomous background scheduler
+    startScheduler(pool, memoryProfiles);
   });
 } else if (process.env.VERCEL && process.env.NODE_ENV !== 'test') {
   initDatabase().catch(err => console.error('Vercel DB Init Error:', err));
 }
+
 
 
