@@ -119,7 +119,7 @@ export async function runGrowthAnalysis(pool, memoryProfiles = {}) {
           SUM(impressions) as total_impressions,
           SUM(clicks) as total_clicks,
           SUM(signups) as total_signups,
-          SUM(activated_profiles) as total_activations
+          SUM(activations) as total_activations
         FROM post_performance
         GROUP BY platform;
       `);

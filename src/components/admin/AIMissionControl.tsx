@@ -27,11 +27,16 @@ import {
   Globe, 
   Wand2,
   Filter,
-  CheckCheck
+  CheckCheck,
+  AlertOctagon,
+  FlaskConical,
+  Play
 } from 'lucide-react';
 import { useProfile } from '../../context/ProfileContext';
 import { useToast } from '../../context/ToastContext';
 import { getSiteUrl } from '../../utils/router';
+import { AgentTeamView } from './AgentTeamView';
+import { ExperimentsView } from './ExperimentsView';
 
 interface AIMissionControlProps {
   navigateTo: (route: string) => void;
@@ -102,16 +107,20 @@ interface FunnelData {
   }>;
 }
 
-type TabType = 'generator' | 'queue' | 'funnel' | 'toolkit';
+type TabType = 'agent_team' | 'queue' | 'funnel' | 'experiments' | 'generator' | 'toolkit';
 
 export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }) => {
   const { currentProfile } = useProfile();
   const toast = useToast();
   const siteUrl = getSiteUrl();
 
-  const [activeTab, setActiveTab] = useState<TabType>('generator');
+  const [activeTab, setActiveTab] = useState<TabType>('agent_team');
   const [telemetry, setTelemetry] = useState<SystemTelemetry | null>(null);
   const [loadingTelemetry, setLoadingTelemetry] = useState(false);
+
+  // Kill Switch state
+  const [killSwitch, setKillSwitch] = useState<{ is_paused: boolean; reason?: string | null }>({ is_paused: false });
+  const [togglingKillSwitch, setTogglingKillSwitch] = useState(false);
 
   // Queue state
   const [drafts, setDrafts] = useState<QueueDraft[]>([]);
@@ -189,13 +198,59 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
     }
   }, []);
 
+  // Fetch Kill Switch status
+  const fetchKillSwitch = useCallback(async () => {
+    try {
+      const res = await fetch('/api/agent/kill-switch');
+      if (res.ok) {
+        const data = await res.json();
+        setKillSwitch(data);
+      }
+    } catch {
+      // Offline fallback
+    }
+  }, []);
+
+  // Toggle Global Emergency Kill Switch
+  const handleToggleKillSwitch = async () => {
+    setTogglingKillSwitch(true);
+    try {
+      const nextState = !killSwitch.is_paused;
+      const res = await fetch('/api/agent/kill-switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          isPaused: nextState,
+          reason: nextState ? 'Emergency pause triggered by founder from Mission Control' : 'Resumed by founder'
+        })
+      });
+
+      if (res.ok) {
+        setKillSwitch({ is_paused: nextState });
+        if (nextState) {
+          toast.error('🚨 EMERGENCY KILL SWITCH ACTIVATED: All agent tasks and cycles halted.');
+        } else {
+          toast.success('✅ Kill switch deactivated: Autonomous growth team resumed.');
+        }
+      }
+    } catch {
+      toast.error('Failed to toggle emergency kill switch');
+    } finally {
+      setTogglingKillSwitch(false);
+    }
+  };
+
   useEffect(() => {
     fetchTelemetry();
     fetchQueue();
     fetchFunnel();
-    const interval = setInterval(fetchTelemetry, 15000);
+    fetchKillSwitch();
+    const interval = setInterval(() => {
+      fetchTelemetry();
+      fetchKillSwitch();
+    }, 15000);
     return () => clearInterval(interval);
-  }, [fetchTelemetry, fetchQueue, fetchFunnel]);
+  }, [fetchTelemetry, fetchQueue, fetchFunnel, fetchKillSwitch]);
 
   // Generate copy
   const handleGenerate = async () => {
@@ -297,13 +352,21 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
           <div className="space-y-1">
             <div className="flex items-center gap-2.5">
               <span className="flex h-2.5 w-2.5 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                  killSwitch.is_paused ? 'bg-red-400' : 'bg-emerald-400'
+                }`}></span>
+                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                  killSwitch.is_paused ? 'bg-red-500' : 'bg-emerald-500'
+                }`}></span>
               </span>
-              <span className="text-xs font-semibold tracking-wider uppercase text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-                Autonomous AI Gateway Active
+              <span className={`text-xs font-semibold tracking-wider uppercase px-2.5 py-0.5 rounded-full border ${
+                killSwitch.is_paused
+                  ? 'text-red-400 bg-red-500/10 border-red-500/30 animate-pulse font-bold'
+                  : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+              }`}>
+                {killSwitch.is_paused ? '🚨 EMERGENCY KILL SWITCH ACTIVATED' : 'Autonomous AI Gateway Active'}
               </span>
-              <span className="text-xs text-slate-400 font-mono">v1.2.0 • Local RTX 3050 A</span>
+              <span className="text-xs text-slate-400 font-mono">v1.3.0 • Local RTX 3050 A • $0.00 Cost</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
               <span className="bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">
@@ -314,31 +377,58 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
               </span>
             </h1>
             <p className="text-sm text-slate-400">
-              Operate local LLMs, review staged social queue, monitor VRAM telemetry, and drive the 30-day builder activation funnel.
+              Operate autonomous growth team, review staged drafts, monitor task queues, and achieve the 30-day builder activation goal.
             </p>
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Global Emergency Kill Switch Button */}
+            <button
+              id="global-kill-switch-btn"
+              onClick={handleToggleKillSwitch}
+              disabled={togglingKillSwitch}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95 border ${
+                killSwitch.is_paused
+                  ? 'bg-red-600 hover:bg-red-500 text-white border-red-500 shadow-red-600/30 animate-pulse'
+                  : 'bg-slate-900 border-red-500/30 hover:border-red-500/60 text-red-400 hover:text-red-300'
+              }`}
+              title={killSwitch.is_paused ? 'Click to resume all autonomous agents' : 'Emergency pause all agents'}
+            >
+              {killSwitch.is_paused ? (
+                <>
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  Resume All Agents
+                </>
+              ) : (
+                <>
+                  <AlertOctagon className="w-3.5 h-3.5 text-red-400" />
+                  Emergency Stop
+                </>
+              )}
+            </button>
+
             <button
               id="refresh-telemetry-btn"
               onClick={() => {
                 fetchTelemetry();
                 fetchQueue();
                 fetchFunnel();
+                fetchKillSwitch();
                 toast.success('Telemetry & queue refreshed');
               }}
               className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 hover:border-indigo-500/40 text-xs font-medium text-slate-300 hover:text-white transition-all shadow-sm active:scale-95"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loadingTelemetry ? 'animate-spin text-indigo-400' : ''}`} />
-              Sync Telemetry
+              Sync
             </button>
+
             <button
               id="open-core-admin-btn"
               onClick={() => navigateTo('admin')}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600/20 border border-indigo-500/30 hover:bg-indigo-600/30 text-xs font-semibold text-indigo-300 transition-all active:scale-95"
             >
               <ShieldCheck className="w-3.5 h-3.5" />
-              Core Admin
+              Admin
             </button>
           </div>
         </div>
@@ -450,16 +540,16 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
         {/* ── Navigation Tabs ── */}
         <div className="flex items-center gap-2 p-1.5 bg-slate-900/80 border border-white/[0.08] rounded-2xl backdrop-blur-xl overflow-x-auto">
           <button
-            id="tab-generator-btn"
-            onClick={() => setActiveTab('generator')}
+            id="tab-agent-team-btn"
+            onClick={() => setActiveTab('agent_team')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
-              activeTab === 'generator'
+              activeTab === 'agent_team'
                 ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
                 : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'
             }`}
           >
-            <Sparkles className="w-4 h-4" />
-            AI Draft Studio
+            <Bot className="w-4 h-4 text-indigo-300" />
+            Autonomous Agent Team
           </button>
 
           <button
@@ -492,6 +582,32 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
           </button>
 
           <button
+            id="tab-experiments-btn"
+            onClick={() => setActiveTab('experiments')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
+              activeTab === 'experiments'
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'
+            }`}
+          >
+            <FlaskConical className="w-4 h-4 text-purple-300" />
+            Self-Improving Memory & A/B
+          </button>
+
+          <button
+            id="tab-generator-btn"
+            onClick={() => setActiveTab('generator')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
+              activeTab === 'generator'
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            AI Draft Studio
+          </button>
+
+          <button
             id="tab-toolkit-btn"
             onClick={() => setActiveTab('toolkit')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
@@ -505,7 +621,13 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
           </button>
         </div>
 
-        {/* ── TAB 1: AI DRAFT STUDIO ── */}
+        {/* ── TAB: AUTONOMOUS AGENT TEAM ── */}
+        {activeTab === 'agent_team' && <AgentTeamView />}
+
+        {/* ── TAB: SELF-IMPROVING MEMORY & A/B EXPERIMENTS ── */}
+        {activeTab === 'experiments' && <ExperimentsView />}
+
+        {/* ── TAB: AI DRAFT STUDIO ── */}
         {activeTab === 'generator' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             
