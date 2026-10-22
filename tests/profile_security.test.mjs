@@ -4,6 +4,7 @@ import http from 'node:http';
 
 // Prevent automatic app.listen during import
 process.env.VERCEL = '1';
+process.env.NODE_ENV = 'test';
 process.env.ADMIN_SECRET_KEY = 'test_secret_admin_key_123';
 
 const { default: app } = await import('../server/index.mjs');

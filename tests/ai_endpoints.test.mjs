@@ -1,6 +1,9 @@
+process.env.VERCEL = '1';
+process.env.NODE_ENV = 'test';
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import app from '../server/index.mjs';
+
+const { default: app } = await import('../server/index.mjs');
 
 // Minimal in-memory request simulator
 async function simulatedRequest(app, method, url, body = null, headers = {}) {
