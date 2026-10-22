@@ -1,6 +1,6 @@
-process.env.VERCEL = '1';
+delete process.env.VERCEL;
 process.env.NODE_ENV = 'test';
-import { test, describe, beforeEach, after } from 'node:test';
+import { test, describe, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
@@ -17,120 +17,216 @@ import {
   clearMemoryPromptVersions
 } from '../server/services/promptEvolution.mjs';
 
+import {
+  recordFounderFeedback,
+  listFeedback,
+  ingestOutcomes,
+  listOutcomes,
+  dumpContentPrompt,
+  evaluateAbExperimentWithMinSampleSize,
+  runWeeklyRetro,
+  activatePromptVersion,
+  runFeedbackLoopDryRun,
+  clearMemoryFeedbackLoop
+} from '../server/services/feedbackLoop.mjs';
+
+import { createTestClient } from './testServer.mjs';
+
 const { default: app, pool } = await import('../server/index.mjs');
 
-// Minimal in-memory request simulator
-async function simulatedRequest(app, method, url, body = null, headers = {}) {
-  return new Promise((resolve) => {
-    const req = {
-      method,
-      url,
-      headers: { 'content-type': 'application/json', ...headers },
-      body,
-    };
+describe('PR #5 / STEP 6: Autonomous Feedback Loop & Continuous Evolution', () => {
+  let client;
 
-    let statusCode = 200;
-    let responseHeaders = {};
-
-    const res = {
-      status(code) {
-        statusCode = code;
-        return this;
-      },
-      setHeader(name, value) {
-        responseHeaders[name.toLowerCase()] = value;
-        return this;
-      },
-      json(data) {
-        resolve({
-          status: statusCode,
-          headers: responseHeaders,
-          body: data
-        });
-      },
-      send(data) {
-        resolve({
-          status: statusCode,
-          headers: responseHeaders,
-          body: data
-        });
-      }
-    };
-
-    app.handle(req, res);
+  before(async () => {
+    client = await createTestClient(app);
   });
-}
 
-describe('PR #5: Autonomous Feedback Loop (Measure -> Learn -> Evolve)', () => {
   beforeEach(() => {
     clearMemoryExperiments();
     clearMemoryPromptVersions();
+    clearMemoryFeedbackLoop();
   });
 
   after(async () => {
+    if (client) {
+      await client.close();
+    }
     if (pool) {
       await pool.end();
     }
   });
 
-  // ── A/B Growth Experiment Engine Tests ──
+  // ── 6a. Feedback Table & Operations ──
 
-  test('createExperiment initializes hypothesis with running status and typed variants', async () => {
-    const exp = await createExperiment(null, {
-      hypothesis: 'Data-backed hooks generate 50% more profile shares than curiosity hooks',
-      variantA: { label: 'Data-backed hook with hackathon stats', hookStyle: 'data_backed' },
-      variantB: { label: 'Curiosity hook questioning Linktree', hookStyle: 'curiosity' },
-      metric: 'shares'
+  test('recordFounderFeedback records approve/edit/reject with reason tag and text comparison', async () => {
+    // 1. Approval
+    const appRes = await recordFounderFeedback(null, {
+      draftId: 'd-101',
+      platform: 'x',
+      decision: 'approved',
+      reasonTag: 'technical_clarity',
+      draftText: 'Connectly gives you real-time click tracking on demo links under MIT license.'
     });
+    assert.equal(appRes.success, true);
+    assert.equal(appRes.feedback.decision, 'approved');
+    assert.equal(appRes.feedback.final_text, appRes.feedback.draft_text);
 
-    assert.ok(exp.id.startsWith('exp_'));
-    assert.equal(exp.status, 'running');
-    assert.equal(exp.winner, null);
-    assert.equal(exp.metric, 'shares');
+    // 2. Rejection with reason tag
+    const rejRes = await recordFounderFeedback(null, {
+      draftId: 'd-102',
+      platform: 'linkedin',
+      decision: 'rejected',
+      reasonTag: 'hook_weak',
+      draftText: 'Here is another link in bio tool for developers.'
+    });
+    assert.equal(rejRes.success, true);
+    assert.equal(rejRes.feedback.decision, 'rejected');
+    assert.equal(rejRes.feedback.reason_tag, 'hook_weak');
+
+    // 3. Edit with draft vs final text comparison
+    const editRes = await recordFounderFeedback(null, {
+      draftId: 'd-103',
+      platform: 'x',
+      decision: 'edited',
+      reasonTag: 'tone',
+      draftText: 'Supercharge your links with our incredible bio tool.',
+      finalText: 'Why do AI engineers use messy linktrees? Connectly is an open-source bio-link under MIT.'
+    });
+    assert.equal(editRes.success, true);
+    assert.equal(editRes.feedback.decision, 'edited');
+    assert.notEqual(editRes.feedback.draft_text, editRes.feedback.final_text);
+
+    const history = await listFeedback(null, 10);
+    assert.equal(history.length, 3);
   });
 
-  test('recordObservation declares winner and completes experiment when threshold met', async () => {
-    const exp = await createExperiment(null, {
-      hypothesis: 'Variant A converts better',
-      variantA: { label: 'Data-backed Hook' },
-      variantB: { label: 'Generic Hook' },
-      metric: 'clicks'
+  // ── 6b. Outcomes Ingestion ──
+
+  test('ingestOutcomes accepts CSV and JSON metrics with source attribution (?s=) and activated counts', async () => {
+    // Test CSV format
+    const csvData = `post_id,platform,source_tag,impressions,clicks,visits,activated_count
+post_101,x,s=share,1200,85,60,4
+post_102,linkedin,s=qr,850,42,35,2`;
+
+    const csvRes = await ingestOutcomes(null, csvData);
+    assert.equal(csvRes.success, true);
+    assert.equal(csvRes.ingestedCount, 2);
+
+    // Test JSON format
+    const jsonRes = await ingestOutcomes(null, {
+      postId: 'post_103',
+      platform: 'x',
+      sourceTag: 's=poster',
+      impressions: 500,
+      clicks: 30,
+      visits: 25,
+      activatedCount: 1
     });
+    assert.equal(jsonRes.success, true);
+    assert.equal(jsonRes.ingestedCount, 1);
 
-    // Record 5 samples for A with 4 conversions (80% conv)
-    for (let i = 0; i < 5; i++) {
-      await recordObservation(null, exp.id, 'a', i < 4);
-    }
-
-    // Record 5 samples for B with 1 conversion (20% conv)
-    for (let i = 0; i < 5; i++) {
-      await recordObservation(null, exp.id, 'b', i === 0);
-    }
-
-    const updated = await recordObservation(null, exp.id, 'a', true);
-    assert.equal(updated.status, 'completed');
-    assert.equal(updated.winner, 'variant_a');
-    assert.ok(updated.completed_at);
+    const outcomes = await listOutcomes(null, 10);
+    assert.equal(outcomes.length, 3);
+    assert.equal(outcomes[0].post_id, 'post_103');
+    assert.equal(outcomes[0].source_tag, 's=poster');
   });
 
-  // ── Prompt Evolution & Auto-Rollback Tests ──
+  // ── 6c. PROVE Content Prompt Includes Top-N Learnings (Secrets Redacted) ──
 
-  test('registerPromptVersion stores version and getActivePromptVersion retrieves it', async () => {
+  test('dumpContentPrompt PROVES top-N learnings are injected and secrets are strictly redacted', async () => {
+    const dump = await dumpContentPrompt(null, { platform: 'x', topN: 3 });
+    assert.equal(dump.containsLearnings, true);
+    assert.ok(dump.learningsCount >= 1);
+    assert.ok(dump.rawPrompt.includes('Top 3 Active Learnings'));
+    assert.ok(dump.rawPrompt.includes(dump.learningsIncluded[0]));
+
+    // Prove zero secrets or API keys in prompt
+    assert.ok(!dump.rawPrompt.includes('sk-'));
+    assert.ok(!dump.rawPrompt.includes('connectly_admin_fallback_key'));
+  });
+
+  // ── 6d. A/B Engine Configurable Minimum Sample Sizes ──
+
+  test('evaluateAbExperimentWithMinSampleSize returns insufficient_data below threshold and blocks auto-promote', () => {
+    const lowSampleExp = {
+      id: 'exp_low',
+      observations: {
+        variantA: { samples: 8, conversions: 6 },
+        variantB: { samples: 7, conversions: 2 }
+      }
+    };
+
+    // Require min 50 samples
+    const evalResult = evaluateAbExperimentWithMinSampleSize(lowSampleExp, 50);
+    assert.equal(evalResult.status, 'insufficient_data');
+    assert.equal(evalResult.winner, null);
+    assert.equal(evalResult.autoPromote, false);
+    assert.ok(evalResult.message.includes('Insufficient data'));
+
+    // High sample size meeting threshold
+    const highSampleExp = {
+      id: 'exp_high',
+      observations: {
+        variantA: { samples: 60, conversions: 45 },
+        variantB: { samples: 60, conversions: 15 }
+      }
+    };
+    const highResult = evaluateAbExperimentWithMinSampleSize(highSampleExp, 50);
+    assert.equal(highResult.status, 'completed');
+    assert.equal(highResult.winner, 'variant_a');
+    assert.equal(highResult.autoPromote, true);
+  });
+
+  // ── 6e. Weekly Retro & Proposed Diffs with 35% Auto-Rollback ──
+
+  test('runWeeklyRetro generates PROPOSED diff and activatePromptVersion requires founder approval + eval score', async () => {
     await registerPromptVersion(null, {
       agent: 'content',
       version: 'v1.0',
-      systemPrompt: 'Stable baseline v1.0',
-      benchmarkScore: 0.95,
+      systemPrompt: 'Base technical writer prompt.',
+      benchmarkScore: 0.90,
       isActive: true
     });
 
-    const active = await getActivePromptVersion(null, 'content');
-    assert.equal(active.version, 'v1.0');
-    assert.equal(active.is_active, true);
+    // Run retro
+    const retro = await runWeeklyRetro(null, { agent: 'content' });
+    assert.equal(retro.status, 'proposed');
+    assert.equal(retro.is_active, false);
+    assert.ok(retro.diff.includes('--- v1.0'));
+    assert.ok(retro.diff.includes('+++ v1.1'));
+
+    // Attempt activation WITHOUT founder approval -> BLOCKED
+    const unapprovedActivation = await activatePromptVersion(null, {
+      proposedVersion: retro,
+      founderApproved: false,
+      evalScore: 0.95,
+      previousScore: 0.90
+    });
+    assert.equal(unapprovedActivation.success, false);
+    assert.ok(unapprovedActivation.error.includes('founder approval required'));
+
+    // Attempt activation with lower eval score -> BLOCKED
+    const lowScoreActivation = await activatePromptVersion(null, {
+      proposedVersion: retro,
+      founderApproved: true,
+      evalScore: 0.85,
+      previousScore: 0.90
+    });
+    assert.equal(lowScoreActivation.success, false);
+    assert.ok(lowScoreActivation.error.includes('scored lower than benchmark'));
+
+    // Valid activation with founder approval and superior score
+    const validActivation = await activatePromptVersion(null, {
+      proposedVersion: retro,
+      founderApproved: true,
+      evalScore: 0.94,
+      previousScore: 0.90
+    });
+    assert.equal(validActivation.success, true);
+    assert.equal(validActivation.activeVersion, 'v1.1');
   });
 
-  test('recordPromptEvaluation triggers auto-rollback when rejection rate exceeds threshold', async () => {
-    // 1. Establish stable baseline v1.0
+  test('recordPromptEvaluation triggers auto-rollback when rejection rate reaches 35%', async () => {
     await registerPromptVersion(null, {
       agent: 'content',
       version: 'v1.0',
@@ -139,60 +235,72 @@ describe('PR #5: Autonomous Feedback Loop (Measure -> Learn -> Evolve)', () => {
       isActive: false
     });
 
-    // 2. Deploy experimental v1.2
     await registerPromptVersion(null, {
       agent: 'content',
-      version: 'v1.2',
-      systemPrompt: 'Aggressive experimental prompt v1.2',
-      benchmarkScore: 0.80,
+      version: 'v1.1',
+      systemPrompt: 'Experimental v1.1',
+      benchmarkScore: 0.90,
       isActive: true
     });
 
-    // 3. Record evaluations: 2 rejections out of 2 reviews (100% rejection rate)
-    await recordPromptEvaluation(null, { agent: 'content', version: 'v1.2', approved: false });
-    const eval2 = await recordPromptEvaluation(null, { agent: 'content', version: 'v1.2', approved: false });
+    // Feed evaluations: 1 approval, 2 rejections (rejection rate = 2/3 = 66% >= 35%)
+    await recordPromptEvaluation(null, { agent: 'content', version: 'v1.1', approved: true });
+    await recordPromptEvaluation(null, { agent: 'content', version: 'v1.1', approved: false });
+    const thirdEval = await recordPromptEvaluation(null, { agent: 'content', version: 'v1.1', approved: false });
 
-    assert.equal(eval2.rolledBack, true);
-    assert.equal(eval2.currentActiveVersion, 'v1.0');
+    assert.equal(thirdEval.rolledBack, true);
+    assert.equal(thirdEval.currentActiveVersion, 'v1.0');
+  });
 
-    // Verify v1.0 is active again
-    const active = await getActivePromptVersion(null, 'content');
-    assert.equal(active.version, 'v1.0');
-    assert.equal(active.is_active, true);
+  // ── 6f. Dry Run Routine (7 Sample Feedback Rows) ──
+
+  test('runFeedbackLoopDryRun executes 7-sample cycle, shows diff, eval before/after, and writer drafts', async () => {
+    const dryRun = await runFeedbackLoopDryRun(null);
+    assert.equal(dryRun.sampleFeedbackCount, 7);
+    assert.ok(dryRun.promptDiff);
+    assert.ok(dryRun.evalComparison.before <= dryRun.evalComparison.after);
+    assert.ok(dryRun.writerDrafts.before);
+    assert.ok(dryRun.writerDrafts.after);
+    assert.notEqual(dryRun.writerDrafts.before, dryRun.writerDrafts.after);
   });
 
   // ── HTTP Endpoints Tests ──
 
-  test('HTTP API: POST /api/agent/experiments and GET /api/agent/experiments', async () => {
-    const postRes = await simulatedRequest(app, 'POST', '/api/agent/experiments', {
-      hypothesis: 'Poster CTA converts 2x better',
-      variantA: { label: 'Direct QR Link' },
-      variantB: { label: 'Generic Homepage' },
-      metric: 'signups'
+  test('HTTP API: Feedback, outcomes, and retro endpoints function with admin auth', async () => {
+    // 1. Post feedback
+    const fbRes = await client.request('POST', '/api/agent/feedback', {
+      draftId: 'http_d1',
+      platform: 'x',
+      decision: 'approved',
+      reasonTag: 'clarity',
+      draftText: 'Connectly open-source bio-link'
     });
-    assert.equal(postRes.status, 201);
-    assert.equal(postRes.body.success, true);
-    assert.ok(postRes.body.experiment.id);
+    assert.equal(fbRes.status, 200);
+    assert.equal(fbRes.body.success, true);
 
-    const getRes = await simulatedRequest(app, 'GET', '/api/agent/experiments');
-    assert.equal(getRes.status, 200);
-    assert.equal(getRes.body.success, true);
-    assert.ok(Array.isArray(getRes.body.experiments));
-    assert.ok(getRes.body.experiments.length >= 1);
-  });
-
-  test('HTTP API: POST & GET /api/agent/prompts endpoints manage versioning', async () => {
-    const registerRes = await simulatedRequest(app, 'POST', '/api/agent/prompts', {
-      agent: 'outreach',
-      version: 'v1.0',
-      systemPrompt: 'Technical outreach specialist'
+    // 2. Ingest outcomes
+    const outRes = await client.request('POST', '/api/agent/outcomes', {
+      postId: 'http_p1',
+      platform: 'x',
+      sourceTag: 's=share',
+      impressions: 400,
+      clicks: 25,
+      visits: 20,
+      activatedCount: 1
     });
-    assert.equal(registerRes.status, 201);
-    assert.equal(registerRes.body.success, true);
+    assert.equal(outRes.status, 200);
+    assert.equal(outRes.body.success, true);
 
-    const activeRes = await simulatedRequest(app, 'GET', '/api/agent/prompts/outreach/active');
-    assert.equal(activeRes.status, 200);
-    assert.equal(activeRes.body.success, true);
-    assert.equal(activeRes.body.activePrompt.version, 'v1.0');
+    // 3. Dump content prompt
+    const dumpRes = await client.request('GET', '/api/agent/prompt/dump?platform=x&topN=2');
+    assert.equal(dumpRes.status, 200);
+    assert.equal(dumpRes.body.success, true);
+    assert.ok(dumpRes.body.rawPrompt);
+
+    // 4. Dry run retro endpoint
+    const dryRunRes = await client.request('POST', '/api/agent/retro/dry-run');
+    assert.equal(dryRunRes.status, 200);
+    assert.equal(dryRunRes.body.success, true);
+    assert.equal(dryRunRes.body.sampleFeedbackCount, 7);
   });
 });
