@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useProfile } from '../../context/ProfileContext';
 import { useToast } from '../../context/ToastContext';
+import { profileUrl as getProfileUrl, getSiteHostname } from '../../utils/router';
 
 interface OverviewTabProps {
   navigateTo: (route: string) => void;
@@ -29,7 +30,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ navigateTo, onOpenAI }
   const [copied, setCopied] = useState(false);
   const [chartMetric, setChartMetric] = useState<'views' | 'clicks'>('views');
 
-  const profileUrl = `${window.location.origin}/#/@${currentProfile.username}`;
+  const profileUrl = getProfileUrl(currentProfile.username);
+  const siteHostname = getSiteHostname();
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(profileUrl);
@@ -109,7 +111,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ navigateTo, onOpenAI }
               )}
             </div>
             <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
-              connectly.bio/@{currentProfile.username}
+              {siteHostname}/@{currentProfile.username}
             </h2>
           </div>
 

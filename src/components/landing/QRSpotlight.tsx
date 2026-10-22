@@ -2,6 +2,7 @@ import React from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { QrCode, Printer, CheckCircle2, ArrowRight } from 'lucide-react';
 import { useProfile } from '../../context/ProfileContext';
+import { profileUrl as getProfileUrl, getSiteHostname } from '../../utils/router';
 
 interface QRSpotlightProps {
   navigateTo: (route: string) => void;
@@ -9,7 +10,8 @@ interface QRSpotlightProps {
 
 export const QRSpotlight: React.FC<QRSpotlightProps> = ({ navigateTo }) => {
   const { currentProfile } = useProfile();
-  const profileUrl = `${window.location.origin}/#/@${currentProfile.username}`;
+  const profileUrl = getProfileUrl(currentProfile.username);
+  const siteHostname = getSiteHostname();
 
   return (
     <section className="py-20 bg-dark-900/60 border-y border-white/5 relative overflow-hidden">
@@ -117,7 +119,7 @@ export const QRSpotlight: React.FC<QRSpotlightProps> = ({ navigateTo }) => {
 
                 <div className="space-y-1">
                   <p className="text-xs font-bold text-white uppercase tracking-wider">Scan to Connect</p>
-                  <p className="text-[11px] text-slate-400">connectly.bio/@{currentProfile.username}</p>
+                  <p className="text-[11px] text-slate-400">{siteHostname}/@{currentProfile.username}</p>
                 </div>
 
                 {/* Mini Footer */}

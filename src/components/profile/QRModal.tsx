@@ -3,6 +3,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { X, Download, Printer, UserPlus } from 'lucide-react';
 import type { UserProfile } from '../../types';
 import { generateVCard, downloadElementAsImage } from '../../utils/qrUtils';
+import { profileUrl as getProfileUrl } from '../../utils/router';
 import { BrandIcon } from '../common/BrandLogo';
 
 interface QRModalProps {
@@ -15,7 +16,7 @@ interface QRModalProps {
 export const QRModal: React.FC<QRModalProps> = ({ profile, isOpen, onClose, onOpenPoster }) => {
   if (!isOpen) return null;
 
-  const profileUrl = `${window.location.origin}/#/@${profile.username}`;
+  const profileUrl = getProfileUrl(profile.username);
   const vCardDataUri = generateVCard(profile);
 
   const handleDownloadPNG = async () => {

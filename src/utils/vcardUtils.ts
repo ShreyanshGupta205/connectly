@@ -4,6 +4,7 @@
  * on iOS, Android, macOS, and Windows.
  */
 import type { UserProfile } from '../types';
+import { profileUrl } from './router';
 
 export function generateVCard(profile: UserProfile): string {
   const lines: string[] = [
@@ -22,9 +23,8 @@ export function generateVCard(profile: UserProfile): string {
   }
 
   // Add website/profile URL
-  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://connectly.bio';
-  const profileUrl = `${currentOrigin}/#/@${profile.username}`;
-  lines.push(`URL:${profileUrl}`);
+  lines.push(`URL:${profileUrl(profile.username)}`);
+
 
   // Add social profiles as X-SOCIALPROFILE
   profile.links.forEach(link => {

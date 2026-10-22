@@ -2,6 +2,32 @@
   "version": 2,
   "rewrites": [
     {
+      "source": "/@:handle",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(.*(bot|crawl|slurp|spider|facebookexternalhit|Facebot|Twitterbot|LinkedInBot|WhatsApp|TelegramBot|Discordbot|Slackbot|Pinterest|SkypeUriPreview).*)"
+        }
+      ],
+      "destination": "/api/og.mjs?handle=:handle"
+    },
+    {
+      "source": "/p/:handle",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(.*(bot|crawl|slurp|spider|facebookexternalhit|Facebot|Twitterbot|LinkedInBot|WhatsApp|TelegramBot|Discordbot|Slackbot|Pinterest|SkypeUriPreview).*)"
+        }
+      ],
+      "destination": "/api/og.mjs?handle=:handle"
+    },
+    {
+      "source": "/api/og",
+      "destination": "/api/og.mjs"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index.mjs"
     },

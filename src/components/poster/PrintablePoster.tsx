@@ -9,6 +9,7 @@ import {
 import { useProfile } from '../../context/ProfileContext';
 import { getPlatformMeta } from '../../utils/platformIcons';
 import { downloadElementAsImage } from '../../utils/qrUtils';
+import { profileUrl as getProfileUrl, getSiteHostname } from '../../utils/router';
 import { BrandLogo, BrandIcon } from '../common/BrandLogo';
 
 interface PrintablePosterProps {
@@ -24,7 +25,8 @@ export const PrintablePoster: React.FC<PrintablePosterProps> = ({ username, navi
   const cleanUsername = username.replace(/^poster-/, '').replace(/^@/, '');
   const profile = profiles[cleanUsername] || profiles['shreyansh'];
 
-  const profileUrl = `${window.location.origin}/#/@${profile.username}`;
+  const profileUrl = getProfileUrl(profile.username);
+  const siteHostname = getSiteHostname();
 
   const handlePrint = () => {
     window.print();
@@ -170,7 +172,7 @@ export const PrintablePoster: React.FC<PrintablePosterProps> = ({ username, navi
                   Scan with Camera to Connect
                 </p>
                 <p className="text-sm font-mono text-cyan-300 font-bold">
-                  connectly.bio/@{profile.username}
+                  {siteHostname}/@{profile.username}
                 </p>
               </div>
             </div>
@@ -196,7 +198,7 @@ export const PrintablePoster: React.FC<PrintablePosterProps> = ({ username, navi
               <span>Event / Hackathon Networking Poster</span>
               <div className="flex items-center gap-1.5 font-bold text-indigo-300">
                 <BrandIcon sizeClass="w-3.5 h-3.5" />
-                <span>connectly.bio</span>
+                <span>{siteHostname}</span>
               </div>
             </div>
 
@@ -242,7 +244,7 @@ export const PrintablePoster: React.FC<PrintablePosterProps> = ({ username, navi
 
             <div className="space-y-1">
               <p className="text-xs font-extrabold text-white uppercase tracking-wider">Scan to Connect</p>
-              <p className="text-[11px] font-mono text-slate-400">connectly.bio/@{profile.username}</p>
+              <p className="text-[11px] font-mono text-slate-400">{siteHostname}/@{profile.username}</p>
             </div>
 
             <div className="pt-4 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400">
@@ -268,7 +270,7 @@ export const PrintablePoster: React.FC<PrintablePosterProps> = ({ username, navi
                 bgColor="#f1f5f9"
               />
             </div>
-            <p className="text-xs font-bold text-slate-600 font-mono">connectly.bio/@{profile.username}</p>
+            <p className="text-xs font-bold text-slate-600 font-mono">{siteHostname}/@{profile.username}</p>
           </div>
         )}
 

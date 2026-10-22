@@ -11,39 +11,61 @@ import { ShareModal } from './components/profile/ShareModal';
 import { QRModal } from './components/profile/QRModal';
 import { CommandPalette } from './components/common/CommandPalette';
 import { AdminPanel } from './components/admin/AdminPanel';
+import { 
+  parseRoute, 
+  pathToRoute, 
+  routeToPath, 
+  extractUsername, 
+  isPublicProfileRoute, 
+  isPosterRoute as checkIsPosterRoute 
+} from './utils/router';
 
 const AppContent: React.FC = () => {
   const { currentProfile, switchProfile, profiles } = useProfile();
 
-  // Route state
+  // Route state initialized from pathname + legacy hash
   const [currentRoute, setCurrentRoute] = useState<string>(() => {
-    const raw = window.location.hash.replace(/^#\/?/, '').replace(/^\/+/, '');
-    return raw || 'landing';
+    const { route, canonicalPath, isLegacyHash } = parseRoute(window.location.pathname, window.location.hash);
+    if (isLegacyHash && typeof window !== 'undefined') {
+      // Cleanly replace legacy hash with canonical path in browser history
+      window.history.replaceState(null, '', canonicalPath);
+    }
+    return route;
   });
 
   const [globalShareOpen, setGlobalShareOpen] = useState(false);
   const [globalQROpen, setGlobalQROpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
-  // Sync hash routing
+  // Sync route and handle browser Back/Forward (popstate)
   useEffect(() => {
-    const handleHashChange = () => {
-      let rawHash = window.location.hash.replace(/^#\/?/, '');
-      if (rawHash.startsWith('/')) rawHash = rawHash.replace(/^\/+/, '');
-      const targetRoute = rawHash || 'landing';
-      setCurrentRoute(targetRoute);
+    const handleLocationChange = () => {
+      const { route, canonicalPath, isLegacyHash } = parseRoute(window.location.pathname, window.location.hash);
+      
+      if (isLegacyHash) {
+        window.history.replaceState(null, '', canonicalPath);
+      }
 
-      // If route is @username or /@username or p/username, sync profile
-      const cleanUsername = targetRoute.replace(/^\/+/, '').replace(/^@/, '').replace(/^p\//, '');
-      if ((targetRoute.startsWith('@') || targetRoute.startsWith('/@') || targetRoute.startsWith('p/')) && profiles[cleanUsername]) {
-        switchProfile(cleanUsername);
+      setCurrentRoute(route);
+
+      // Sync active profile if viewing a public profile
+      const username = extractUsername(route);
+      if (username && profiles[username]) {
+        switchProfile(username);
       }
     };
 
-    window.addEventListener('hashchange', handleHashChange);
-    handleHashChange();
+    window.addEventListener('popstate', handleLocationChange);
+    // Also listen to hashchange for backwards compatibility with any remaining in-page anchors
+    window.addEventListener('hashchange', handleLocationChange);
+    
+    // Initial sync
+    handleLocationChange();
 
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange);
+      window.removeEventListener('hashchange', handleLocationChange);
+    };
   }, [profiles, switchProfile]);
 
   // Global keyboard shortcut for Command Palette (Cmd+K or Ctrl+K)
@@ -60,20 +82,21 @@ const AppContent: React.FC = () => {
   }, []);
 
   const navigateTo = (route: string) => {
-    const cleanRoute = route.replace(/^\/+/, '');
-    window.location.hash = `#/${cleanRoute}`;
-    setCurrentRoute(cleanRoute);
+    const canonical = routeToPath(route);
+    const internal = pathToRoute(canonical);
+
+    if (window.location.pathname !== canonical) {
+      window.history.pushState(null, '', canonical);
+    }
+
+    setCurrentRoute(internal);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const isPublicProfile = currentRoute.startsWith('@') || currentRoute.startsWith('/@') || currentRoute.startsWith('p/');
-  const isPosterRoute = currentRoute.startsWith('poster-') || currentRoute.startsWith('poster/');
+  const isPublicProfile = isPublicProfileRoute(currentRoute);
+  const isPosterRoute = checkIsPosterRoute(currentRoute);
 
-  const targetUsername = isPublicProfile
-    ? currentRoute.replace(/^\/+/, '').replace(/^@/, '').replace(/^p\//, '')
-    : isPosterRoute
-      ? currentRoute.replace(/^poster-/, '').replace(/^poster\//, '')
-      : currentProfile.username;
+  const targetUsername = extractUsername(currentRoute) || currentProfile.username;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-indigo-500/30 selection:text-indigo-200">

@@ -17,7 +17,7 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ navigateTo }) =>
       badge: 'Starter',
       isPopular: false,
       features: [
-        'Custom connectly.bio/@username URL',
+        'Custom /@username profile URL',
         'Up to 5 social links',
         '3 Classic themes (Aurora, Minimal, Stealth)',
         'Standard QR Code download',

@@ -20,6 +20,7 @@ import { AnalyticsTab } from './AnalyticsTab';
 import { LivePhonePreview } from './LivePhonePreview';
 import { AIAssistantModal } from './AIAssistantModal';
 import { GoogleAuthModal, GoogleIcon } from '../common/GoogleAuthModal';
+import { profileUrl, getSiteHostname } from '../../utils/router';
 
 interface DashboardLayoutProps {
   navigateTo: (route: string) => void;
@@ -186,12 +187,12 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">Live</span>
             </div>
             <p className="font-mono text-[11px] text-indigo-300 truncate">
-              connectly.bio/@{currentProfile.username}
+              {getSiteHostname()}/@{currentProfile.username}
             </p>
             <div className="grid grid-cols-2 gap-2 pt-0.5">
               <button
                 onClick={() => {
-                  const url = `${window.location.origin}/#/@${currentProfile.username}`;
+                  const url = profileUrl(currentProfile.username);
                   navigator.clipboard.writeText(url);
                 }}
                 className="py-1.5 px-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 text-xs font-medium flex items-center justify-center gap-1 transition-colors"
