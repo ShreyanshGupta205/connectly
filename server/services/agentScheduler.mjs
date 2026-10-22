@@ -6,6 +6,7 @@
 
 import { runOrchestratorCycle } from '../agents/orchestrator.mjs';
 import { isSystemPaused } from './killSwitch.mjs';
+import { processAgentQueueOnce } from './agentWorker.mjs';
 
 let intervalId = null;
 let isRunning = false;
@@ -28,9 +29,15 @@ export async function executeTick(pool, memoryProfiles = {}) {
   lastTickAt = new Date().toISOString();
 
   try {
-    const result = await runOrchestratorCycle(pool, memoryProfiles);
-    lastResult = result;
-    return result;
+    const orchestratorResult = await runOrchestratorCycle(pool, memoryProfiles);
+    const workerResult = await processAgentQueueOnce(pool);
+    lastResult = {
+      status: 'completed',
+      orchestrator: orchestratorResult,
+      worker: workerResult,
+      timestamp: new Date().toISOString()
+    };
+    return lastResult;
   } catch (err) {
     console.error('[Scheduler] Error during autonomous cycle tick:', err.message);
     lastResult = { error: err.message, failed_at: new Date().toISOString() };

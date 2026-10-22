@@ -9,6 +9,10 @@ import { isSystemPaused } from './killSwitch.mjs';
 // In-memory fallback queue for offline / testing environments
 let memoryTasks = new Map();
 
+export function clearMemoryQueue() {
+  memoryTasks.clear();
+}
+
 function generateTaskId() {
   return 'task_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
 }
