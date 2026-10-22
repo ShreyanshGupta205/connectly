@@ -31,7 +31,11 @@ interface Experiment {
   completed_at?: string;
 }
 
-export const ExperimentsView: React.FC = () => {
+interface ExperimentsViewProps {
+  adminKey?: string;
+}
+
+export const ExperimentsView: React.FC<ExperimentsViewProps> = ({ adminKey = '' }) => {
   const toast = useToast();
   const [learnings, setLearnings] = useState<Learning[]>([]);
   const [experiments, setExperiments] = useState<Experiment[]>([]);
@@ -41,12 +45,17 @@ export const ExperimentsView: React.FC = () => {
   const [variantALabel, setVariantALabel] = useState('');
   const [variantBLabel, setVariantBLabel] = useState('');
 
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    'x-admin-key': adminKey
+  };
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [learnRes, expRes] = await Promise.all([
-        fetch('/api/agent/learnings'),
-        fetch('/api/agent/experiments')
+        fetch('/api/agent/learnings', { headers: { 'x-admin-key': adminKey } }),
+        fetch('/api/agent/experiments', { headers: { 'x-admin-key': adminKey } })
       ]);
 
       if (learnRes.ok) {
@@ -62,7 +71,7 @@ export const ExperimentsView: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [adminKey]);
 
   useEffect(() => {
     fetchData();
@@ -78,7 +87,7 @@ export const ExperimentsView: React.FC = () => {
     try {
       const res = await fetch('/api/agent/experiments', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({
           hypothesis: newHypothesis,
           variantA: { label: variantALabel },

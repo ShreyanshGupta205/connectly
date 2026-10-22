@@ -30,7 +30,8 @@ import {
   CheckCheck,
   AlertOctagon,
   FlaskConical,
-  Play
+  Play,
+  Lock
 } from 'lucide-react';
 import { useProfile } from '../../context/ProfileContext';
 import { useToast } from '../../context/ToastContext';
@@ -150,11 +151,52 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
   } | null>(null);
   const [copiedGenerated, setCopiedGenerated] = useState(false);
 
+  // Runtime Admin Key - Held strictly in-memory, never persisted to disk or storage
+  const [adminKey, setAdminKey] = useState<string>('');
+  const [keyInput, setKeyInput] = useState<string>('');
+  const [isVerifyingKey, setIsVerifyingKey] = useState<boolean>(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // Unlock Mission Control with runtime admin key
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const candidate = keyInput.trim();
+    if (!candidate) return;
+    setIsVerifyingKey(true);
+    setAuthError(null);
+    try {
+      const res = await fetch('/api/agent/kill-switch', {
+        headers: { 'x-admin-key': candidate }
+      });
+      if (res.status === 401 || res.status === 403) {
+        setAuthError('Invalid admin key. Access denied.');
+        toast.error('Invalid admin key');
+        return;
+      }
+      if (!res.ok) {
+        setAuthError(`Server error (${res.status}). Ensure the backend server is active.`);
+        toast.error('Authentication failed');
+        return;
+      }
+      setAdminKey(candidate);
+      setKeyInput('');
+      toast.success('Mission Control unlocked');
+    } catch {
+      setAuthError('Network error connecting to backend API.');
+      toast.error('Network error');
+    } finally {
+      setIsVerifyingKey(false);
+    }
+  };
+
   // Fetch telemetry
   const fetchTelemetry = useCallback(async () => {
+    if (!adminKey) return;
     setLoadingTelemetry(true);
     try {
-      const res = await fetch('/api/ai/system');
+      const res = await fetch('/api/ai/system', {
+        headers: { 'x-admin-key': adminKey }
+      });
       if (res.ok) {
         const data = await res.json();
         setTelemetry(data);
@@ -164,13 +206,16 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
     } finally {
       setLoadingTelemetry(false);
     }
-  }, []);
+  }, [adminKey]);
 
   // Fetch queue
   const fetchQueue = useCallback(async () => {
+    if (!adminKey) return;
     setLoadingQueue(true);
     try {
-      const res = await fetch('/api/ai/queue');
+      const res = await fetch('/api/ai/queue', {
+        headers: { 'x-admin-key': adminKey }
+      });
       if (res.ok) {
         const data = await res.json();
         setDrafts(data.drafts || []);
@@ -180,13 +225,16 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
     } finally {
       setLoadingQueue(false);
     }
-  }, [toast]);
+  }, [adminKey, toast]);
 
   // Fetch funnel
   const fetchFunnel = useCallback(async () => {
+    if (!adminKey) return;
     setLoadingFunnel(true);
     try {
-      const res = await fetch('/api/ai/funnel');
+      const res = await fetch('/api/ai/funnel', {
+        headers: { 'x-admin-key': adminKey }
+      });
       if (res.ok) {
         const data = await res.json();
         setFunnelData(data);
@@ -196,12 +244,15 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
     } finally {
       setLoadingFunnel(false);
     }
-  }, []);
+  }, [adminKey]);
 
   // Fetch Kill Switch status
   const fetchKillSwitch = useCallback(async () => {
+    if (!adminKey) return;
     try {
-      const res = await fetch('/api/agent/kill-switch');
+      const res = await fetch('/api/agent/kill-switch', {
+        headers: { 'x-admin-key': adminKey }
+      });
       if (res.ok) {
         const data = await res.json();
         setKillSwitch(data);
@@ -209,16 +260,20 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
     } catch {
       // Offline fallback
     }
-  }, []);
+  }, [adminKey]);
 
   // Toggle Global Emergency Kill Switch
   const handleToggleKillSwitch = async () => {
+    if (!adminKey) return;
     setTogglingKillSwitch(true);
     try {
       const nextState = !killSwitch.is_paused;
       const res = await fetch('/api/agent/kill-switch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-admin-key': adminKey 
+        },
         body: JSON.stringify({
           isPaused: nextState,
           reason: nextState ? 'Emergency pause triggered by founder from Mission Control' : 'Resumed by founder'
@@ -241,6 +296,7 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
   };
 
   useEffect(() => {
+    if (!adminKey) return;
     fetchTelemetry();
     fetchQueue();
     fetchFunnel();
@@ -250,16 +306,20 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
       fetchKillSwitch();
     }, 15000);
     return () => clearInterval(interval);
-  }, [fetchTelemetry, fetchQueue, fetchFunnel, fetchKillSwitch]);
+  }, [adminKey, fetchTelemetry, fetchQueue, fetchFunnel, fetchKillSwitch]);
 
   // Generate copy
   const handleGenerate = async () => {
+    if (!adminKey) return;
     setIsGenerating(true);
     setGeneratedResult(null);
     try {
       const res = await fetch('/api/ai/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-admin-key': adminKey
+        },
         body: JSON.stringify({
           platform,
           audience,
@@ -293,10 +353,14 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
 
   // Queue actions
   const handleQueueAction = async (draftNumber: number, action: string, updatedCopy?: string) => {
+    if (!adminKey) return;
     try {
       const res = await fetch('/api/ai/queue/update', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-admin-key': adminKey
+        },
         body: JSON.stringify({
           draftNumber,
           action,
@@ -343,6 +407,80 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
     return true;
   });
 
+  if (!adminKey) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
+        <div className="max-w-md w-full p-8 rounded-3xl bg-slate-900/80 border border-white/10 backdrop-blur-2xl shadow-2xl space-y-6">
+          <div className="text-center space-y-3">
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-inner">
+              <Lock className="w-8 h-8" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-white tracking-tight">Mission Control Authentication</h2>
+              <p className="text-xs text-slate-400 mt-1">
+                Enter your server admin key to unlock growth agents, queues, and telemetry. Held strictly in memory.
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleUnlock} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                Server Admin Key
+              </label>
+              <input
+                id="admin-key-input"
+                type="password"
+                value={keyInput}
+                onChange={(e) => setKeyInput(e.target.value)}
+                placeholder="Paste CONNECTLY_ADMIN_KEY..."
+                className="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-white/10 text-white placeholder-slate-500 text-sm font-mono focus:outline-none focus:border-indigo-500 transition-all"
+                autoFocus
+              />
+              {authError && (
+                <p className="text-xs text-red-400 mt-1.5 flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  {authError}
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                id="admin-unlock-btn"
+                type="submit"
+                disabled={isVerifyingKey || !keyInput.trim()}
+                className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:hover:bg-indigo-600 text-white font-semibold text-sm transition-all shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2"
+              >
+                {isVerifyingKey ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4" />
+                    Authenticate & Unlock
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+
+          <div className="pt-4 border-t border-white/5 flex items-center justify-between text-xs text-slate-500">
+            <button
+              onClick={() => navigateTo('landing')}
+              className="hover:text-slate-300 transition-colors"
+            >
+              ← Back to App
+            </button>
+            <span className="font-mono text-[10px]">Zero Storage • In-Memory</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 py-8 px-4 sm:px-6 lg:px-8 selection:bg-indigo-500/30 selection:text-indigo-200">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -366,7 +504,7 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
               }`}>
                 {killSwitch.is_paused ? '🚨 EMERGENCY KILL SWITCH ACTIVATED' : 'Autonomous AI Gateway Active'}
               </span>
-              <span className="text-xs text-slate-400 font-mono">v1.3.0 • Local RTX 3050 A • $0.00 Cost</span>
+              <span className="text-xs text-slate-400 font-mono">Autonomous Runtime • Zero Paid Tokens</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
               <span className="bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">
@@ -423,6 +561,19 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
             </button>
 
             <button
+              id="lock-session-btn"
+              onClick={() => {
+                setAdminKey('');
+                toast.info('Mission Control locked. Admin key cleared from memory.');
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-white/10 hover:border-red-500/40 text-xs font-medium text-slate-300 hover:text-red-300 transition-all shadow-sm active:scale-95"
+              title="Lock session and clear admin key from memory"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              Lock
+            </button>
+
+            <button
               id="open-core-admin-btn"
               onClick={() => navigateTo('admin')}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600/20 border border-indigo-500/30 hover:bg-indigo-600/30 text-xs font-semibold text-indigo-300 transition-all active:scale-95"
@@ -452,7 +603,7 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
               </span>
             </div>
             <div className="text-lg font-bold text-white tracking-tight">
-              Ollama {telemetry?.ollama.version || '0.40.6'}
+              Ollama {telemetry?.ollama.version || (telemetry?.ollama.online ? 'Connected' : 'Unavailable')}
             </div>
             <div className="mt-1 text-xs text-slate-400 flex items-center justify-between">
               <span>Port: 11434</span>
@@ -467,15 +618,15 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
             <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
               <span className="flex items-center gap-1.5 font-medium">
                 <Cpu className="w-4 h-4 text-purple-400" />
-                RTX 3050 A VRAM
+                {telemetry?.gpu.modelName || 'GPU VRAM'}
               </span>
               <span className="text-[10px] font-mono text-purple-300">
-                {telemetry?.gpu.free || 0} MB Free
+                {telemetry?.gpu.free !== undefined ? `${telemetry.gpu.free} MB Free` : 'Unavailable'}
               </span>
             </div>
             <div className="text-lg font-bold text-white tracking-tight flex items-baseline justify-between">
-              <span>{telemetry?.gpu.used || 0} / {telemetry?.gpu.total || 4096} MB</span>
-              <span className="text-xs text-slate-400 font-normal">{telemetry?.gpu.util || 0}% Load</span>
+              <span>{telemetry?.gpu.used !== undefined ? `${telemetry.gpu.used} / ${telemetry.gpu.total || 4096} MB` : 'Unavailable'}</span>
+              <span className="text-xs text-slate-400 font-normal">{telemetry?.gpu.util !== undefined ? `${telemetry.gpu.util}% Load` : ''}</span>
             </div>
             {/* Visual VRAM bar */}
             <div className="mt-2 w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
@@ -502,12 +653,12 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
               </span>
             </div>
             <div className="text-lg font-bold text-white tracking-tight">
-              Port {telemetry?.hermes.gatewayPort || 5000}
+              {telemetry?.hermes.running ? `Port ${telemetry?.hermes.gatewayPort || 5000}` : 'Unavailable'}
             </div>
             <div className="mt-1 text-xs text-slate-400 flex items-center justify-between">
               <span>Workers: Default, Scout, Writer</span>
               <span className="text-pink-400 font-mono">
-                PID {telemetry?.hermes.pids[0] || '25688'}
+                {telemetry?.hermes.running && telemetry.hermes.pids.length > 0 ? `PID ${telemetry.hermes.pids[0]}` : 'Unavailable'}
               </span>
             </div>
           </div>
@@ -520,17 +671,17 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
                 30-Day North Star
               </span>
               <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                {funnelData?.goal.progressPercent || 3}% Done
+                {funnelData?.goal ? `${funnelData.goal.progressPercent}% Done` : 'Unavailable'}
               </span>
             </div>
             <div className="text-lg font-bold text-white tracking-tight flex items-baseline justify-between">
-              <span>{funnelData?.goal.current || 1} / {funnelData?.goal.target || 30} Activated</span>
-              <span className="text-xs text-slate-400 font-normal">{funnelData?.goal.remaining || 29} to go</span>
+              <span>{funnelData?.goal ? `${funnelData.goal.current} / ${funnelData.goal.target} Activated` : 'Unavailable'}</span>
+              <span className="text-xs text-slate-400 font-normal">{funnelData?.goal ? `${funnelData.goal.remaining} to go` : ''}</span>
             </div>
             <div className="mt-2 w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500"
-                style={{ width: `${Math.max(5, funnelData?.goal.progressPercent || 3)}%` }}
+                style={{ width: `${Math.max(0, funnelData?.goal ? funnelData.goal.progressPercent : 0)}%` }}
               />
             </div>
           </div>
@@ -622,10 +773,10 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
         </div>
 
         {/* ── TAB: AUTONOMOUS AGENT TEAM ── */}
-        {activeTab === 'agent_team' && <AgentTeamView />}
+        {activeTab === 'agent_team' && <AgentTeamView adminKey={adminKey} />}
 
         {/* ── TAB: SELF-IMPROVING MEMORY & A/B EXPERIMENTS ── */}
-        {activeTab === 'experiments' && <ExperimentsView />}
+        {activeTab === 'experiments' && <ExperimentsView adminKey={adminKey} />}
 
         {/* ── TAB: AI DRAFT STUDIO ── */}
         {activeTab === 'generator' && (
@@ -1355,7 +1506,7 @@ export const AIMissionControl: React.FC<AIMissionControlProps> = ({ navigateTo }
                 <div className="p-4 rounded-2xl bg-slate-950/60 border border-white/[0.08] space-y-1">
                   <span className="text-xs font-bold text-white">Staged Queue Filesystem</span>
                   <div className="font-mono text-[11px] text-indigo-300 break-all bg-black/40 p-2 rounded-lg border border-white/5">
-                    C:\Users\Shreyansh Gupta\agent-setup\queue\pending.md
+                    agent-setup/queue/pending.md
                   </div>
                   <p className="text-[10px] text-slate-500 pt-1">
                     Auto-ingested by Hermes Agent cron routines every 2 hours.

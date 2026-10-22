@@ -56,7 +56,11 @@ interface AnalystReport {
   summary: string;
 }
 
-export const AgentTeamView: React.FC = () => {
+interface AgentTeamViewProps {
+  adminKey?: string;
+}
+
+export const AgentTeamView: React.FC<AgentTeamViewProps> = ({ adminKey = '' }) => {
   const toast = useToast();
   const [stats, setStats] = useState<AgentStats | null>(null);
   const [tasks, setTasks] = useState<AgentTask[]>([]);
@@ -65,25 +69,30 @@ export const AgentTeamView: React.FC = () => {
   const [isCycling, setIsCycling] = useState(false);
   const [taskFilter, setTaskFilter] = useState<'all' | 'queued' | 'running' | 'completed' | 'failed'>('all');
 
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    'x-admin-key': adminKey
+  };
+
   const fetchAgentData = useCallback(async () => {
     setLoading(true);
     try {
       // 1. Fetch stats & kill switch
-      const statsRes = await fetch('/api/agent/stats');
+      const statsRes = await fetch('/api/agent/stats', { headers: { 'x-admin-key': adminKey } });
       if (statsRes.ok) {
         const statsData = await statsRes.json();
         setStats(statsData);
       }
 
       // 2. Fetch tasks
-      const tasksRes = await fetch('/api/agent/tasks?limit=25');
+      const tasksRes = await fetch('/api/agent/tasks?limit=25', { headers: { 'x-admin-key': adminKey } });
       if (tasksRes.ok) {
         const tasksData = await tasksRes.json();
         setTasks(tasksData.tasks || []);
       }
 
       // 3. Fetch analyst report
-      const analystRes = await fetch('/api/agent/analyst/report');
+      const analystRes = await fetch('/api/agent/analyst/report', { headers: { 'x-admin-key': adminKey } });
       if (analystRes.ok) {
         const analystData = await analystRes.json();
         setAnalystReport(analystData.report);
@@ -93,7 +102,7 @@ export const AgentTeamView: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [adminKey]);
 
   useEffect(() => {
     fetchAgentData();
@@ -105,7 +114,10 @@ export const AgentTeamView: React.FC = () => {
   const handleTriggerCycle = async () => {
     setIsCycling(true);
     try {
-      const cycleRes = await fetch('/api/agent/orchestrator/cycle', { method: 'POST' });
+      const cycleRes = await fetch('/api/agent/orchestrator/cycle', { 
+        method: 'POST',
+        headers: authHeaders
+      });
       const cycleData = await cycleRes.json();
 
       if (!cycleRes.ok || !cycleData.success) {
@@ -113,7 +125,10 @@ export const AgentTeamView: React.FC = () => {
       }
 
       // Also trigger worker pass
-      await fetch('/api/agent/worker/process', { method: 'POST' });
+      await fetch('/api/agent/worker/process', { 
+        method: 'POST',
+        headers: authHeaders
+      });
 
       toast.success(cycleData.planSummary || 'Autonomous growth cycle executed successfully!');
       fetchAgentData();
