@@ -16,6 +16,7 @@ import { downloadVCard } from '../../utils/vcardUtils';
 import { useToast } from '../../context/ToastContext';
 import { BrandLogo, BrandIcon } from '../common/BrandLogo';
 import { trackEvent } from '../../utils/analytics';
+import { NotFoundView } from '../common/NotFoundView';
 
 interface PublicProfileViewProps {
   username: string;
@@ -35,7 +36,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   const [isQROpen, setIsQROpen] = useState(false);
 
   const cleanUsername = username.replace(/^@/, '');
-  const profile = profiles[cleanUsername] || profiles['shreyansh'];
+  const profile = profiles[cleanUsername] || (cleanUsername === '' ? profiles['shreyansh'] : undefined);
+
+  if (!profile) {
+    return <NotFoundView navigateTo={navigateTo} attemptedPath={`/@${cleanUsername}`} />;
+  }
 
   // Check if current user is the owner of this profile
   const isOwner = Boolean(

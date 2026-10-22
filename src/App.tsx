@@ -1,17 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { ProfileProvider, useProfile } from './context/ProfileContext';
 import { ToastProvider } from './context/ToastContext';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { LandingPage } from './components/landing/LandingPage';
-import { DashboardLayout } from './components/dashboard/DashboardLayout';
 import { PublicProfileView } from './components/profile/PublicProfileView';
-import { PrintablePoster } from './components/poster/PrintablePoster';
 import { ShareModal } from './components/profile/ShareModal';
 import { QRModal } from './components/profile/QRModal';
 import { CommandPalette } from './components/common/CommandPalette';
-import { AdminPanel } from './components/admin/AdminPanel';
-import { PrivacyPolicyView } from './components/legal/PrivacyPolicyView';
+import { NotFoundView } from './components/common/NotFoundView';
 import { 
   parseRoute, 
   pathToRoute, 
@@ -21,6 +18,19 @@ import {
   isPosterRoute as checkIsPosterRoute 
 } from './utils/router';
 import { Analytics } from '@vercel/analytics/react';
+
+// Code-split heavy components for optimal initial bundle & page speed
+const DashboardLayout = lazy(() => import('./components/dashboard/DashboardLayout').then(m => ({ default: m.DashboardLayout })));
+const PrintablePoster = lazy(() => import('./components/poster/PrintablePoster').then(m => ({ default: m.PrintablePoster })));
+const AdminPanel = lazy(() => import('./components/admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
+const PrivacyPolicyView = lazy(() => import('./components/legal/PrivacyPolicyView').then(m => ({ default: m.PrivacyPolicyView })));
+
+const RouteLoadingFallback: React.FC = () => (
+  <div className="min-h-[50vh] flex flex-col items-center justify-center p-8 gap-4">
+    <div className="w-10 h-10 border-3 border-brand-500/20 border-t-brand-500 rounded-full animate-spin" />
+    <span className="text-slate-400 text-xs font-mono tracking-wider uppercase animate-pulse">Loading component...</span>
+  </div>
+);
 
 const AppContent: React.FC = () => {
   const { currentProfile, switchProfile, profiles } = useProfile();
@@ -114,34 +124,46 @@ const AppContent: React.FC = () => {
 
       {/* Main Routed Content */}
       <main className="flex-1">
-        {currentRoute === 'landing' && (
-          <LandingPage navigateTo={navigateTo} />
-        )}
+        <Suspense fallback={<RouteLoadingFallback />}>
+          {currentRoute === 'landing' && (
+            <LandingPage navigateTo={navigateTo} />
+          )}
 
-        {currentRoute === 'dashboard' && (
-          <DashboardLayout
-            navigateTo={navigateTo}
-            onOpenQR={() => setGlobalQROpen(true)}
-            onOpenShare={() => setGlobalShareOpen(true)}
-            onOpenCommand={() => setCommandPaletteOpen(true)}
-          />
-        )}
+          {currentRoute === 'dashboard' && (
+            <DashboardLayout
+              navigateTo={navigateTo}
+              onOpenQR={() => setGlobalQROpen(true)}
+              onOpenShare={() => setGlobalShareOpen(true)}
+              onOpenCommand={() => setCommandPaletteOpen(true)}
+            />
+          )}
 
-        {currentRoute === 'admin' && (
-          <AdminPanel navigateTo={navigateTo} />
-        )}
+          {currentRoute === 'admin' && (
+            <AdminPanel navigateTo={navigateTo} />
+          )}
 
-        {currentRoute === 'privacy' && (
-          <PrivacyPolicyView navigateTo={navigateTo} />
-        )}
+          {currentRoute === 'privacy' && (
+            <PrivacyPolicyView navigateTo={navigateTo} />
+          )}
 
-        {isPublicProfile && (
-          <PublicProfileView username={targetUsername} navigateTo={navigateTo} />
-        )}
+          {isPublicProfile && (
+            <PublicProfileView username={targetUsername} navigateTo={navigateTo} />
+          )}
 
-        {isPosterRoute && (
-          <PrintablePoster username={targetUsername} navigateTo={navigateTo} />
-        )}
+          {isPosterRoute && (
+            <PrintablePoster username={targetUsername} navigateTo={navigateTo} />
+          )}
+
+          {/* 404 Destination Not Found Fallback */}
+          {currentRoute !== 'landing' &&
+           currentRoute !== 'dashboard' &&
+           currentRoute !== 'admin' &&
+           currentRoute !== 'privacy' &&
+           !isPublicProfile &&
+           !isPosterRoute && (
+            <NotFoundView navigateTo={navigateTo} attemptedPath={window.location.pathname} />
+          )}
+        </Suspense>
       </main>
 
       {/* Footer on Landing & Dashboard */}
