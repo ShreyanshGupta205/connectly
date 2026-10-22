@@ -4,15 +4,15 @@ import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 
-// Firebase configuration provided by user
+// Firebase configuration (reads from environment variables with fallback)
 export const firebaseConfig = {
-  apiKey: "AIzaSyDzLeInqesBxkHaTnNgxbAHJHWWDQ3vfu8",
-  authDomain: "connectly-in.firebaseapp.com",
-  projectId: "connectly-in",
-  storageBucket: "connectly-in.firebasestorage.app",
-  messagingSenderId: "541934951833",
-  appId: "1:541934951833:web:05e6a324dad0e8511e4708",
-  measurementId: "G-0QX2HTSV7Y"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDzLeInqesBxkHaTnNgxbAHJHWWDQ3vfu8",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "connectly-in.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "connectly-in",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "connectly-in.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "541934951833",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:541934951833:web:05e6a324dad0e8511e4708",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-0QX2HTSV7Y"
 };
 
 // Initialize Firebase safely (avoiding duplicate init)
