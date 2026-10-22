@@ -30,7 +30,7 @@ export async function executeTick(pool, memoryProfiles = {}) {
 
   try {
     const orchestratorResult = await runOrchestratorCycle(pool, memoryProfiles);
-    const workerResult = await processAgentQueueOnce(pool);
+    const workerResult = await processAgentQueueOnce(pool, memoryProfiles);
     lastResult = {
       status: 'completed',
       orchestrator: orchestratorResult,
