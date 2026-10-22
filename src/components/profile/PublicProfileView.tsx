@@ -38,10 +38,6 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   const cleanUsername = username.replace(/^@/, '');
   const profile = profiles[cleanUsername] || (cleanUsername === '' ? profiles['shreyansh'] : undefined);
 
-  if (!profile) {
-    return <NotFoundView navigateTo={navigateTo} attemptedPath={`/@${cleanUsername}`} />;
-  }
-
   // Check if current user is the owner of this profile
   const isOwner = Boolean(
     profile && (
@@ -90,18 +86,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   }, [cleanUsername, profile?.username, isOwner, isPreview]);
 
   if (!profile) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-slate-950 text-white">
-        <h2 className="text-2xl font-bold mb-2">Profile Not Found</h2>
-        <p className="text-slate-400 mb-6">The username @{cleanUsername} has not been claimed yet.</p>
-        <button
-          onClick={() => navigateTo('landing')}
-          className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm"
-        >
-          Claim this username
-        </button>
-      </div>
-    );
+    return <NotFoundView navigateTo={navigateTo} attemptedPath={`/@${cleanUsername}`} />;
   }
 
   const fontClasses: Record<string, string> = {

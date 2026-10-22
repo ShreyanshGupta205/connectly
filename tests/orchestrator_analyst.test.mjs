@@ -1,6 +1,6 @@
-process.env.VERCEL = '1';
+delete process.env.VERCEL;
 process.env.NODE_ENV = 'test';
-import { test, describe, beforeEach, after } from 'node:test';
+import { test, describe, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { computeFunnelMetrics, runGrowthAnalysis } from '../server/agents/analyst.mjs';
@@ -13,52 +13,16 @@ import {
 } from '../server/services/agentScheduler.mjs';
 import { setKillSwitch } from '../server/services/killSwitch.mjs';
 import { listTasks } from '../server/services/agentQueue.mjs';
+import { createTestClient } from './testServer.mjs';
 
 const { default: app, pool } = await import('../server/index.mjs');
 
-// Minimal in-memory request simulator
-async function simulatedRequest(app, method, url, body = null, headers = {}) {
-  return new Promise((resolve) => {
-    const req = {
-      method,
-      url,
-      headers: { 'content-type': 'application/json', ...headers },
-      body,
-    };
-
-    let statusCode = 200;
-    let responseHeaders = {};
-
-    const res = {
-      status(code) {
-        statusCode = code;
-        return this;
-      },
-      setHeader(name, value) {
-        responseHeaders[name.toLowerCase()] = value;
-        return this;
-      },
-      json(data) {
-        resolve({
-          status: statusCode,
-          headers: responseHeaders,
-          body: data
-        });
-      },
-      send(data) {
-        resolve({
-          status: statusCode,
-          headers: responseHeaders,
-          body: data
-        });
-      }
-    };
-
-    app.handle(req, res);
-  });
-}
-
 describe('PR #2: Orchestrator + Growth Analyst (Observe & Plan Loop)', () => {
+  let client;
+
+  before(async () => {
+    client = await createTestClient(app);
+  });
   beforeEach(async () => {
     await setKillSwitch(null, false, 'Reset for testing');
     stopScheduler();
@@ -66,6 +30,9 @@ describe('PR #2: Orchestrator + Growth Analyst (Observe & Plan Loop)', () => {
 
   after(async () => {
     stopScheduler();
+    if (client) {
+      await client.close();
+    }
     if (pool) {
       await pool.end();
     }
@@ -185,7 +152,7 @@ describe('PR #2: Orchestrator + Growth Analyst (Observe & Plan Loop)', () => {
   });
 
   test('HTTP API: GET /api/agent/analyst/report returns 200 with funnel report', async () => {
-    const res = await simulatedRequest(app, 'GET', '/api/agent/analyst/report');
+    const res = await client.request('GET', '/api/agent/analyst/report');
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
     assert.equal(res.body.report.goal.target, 30);
@@ -194,7 +161,7 @@ describe('PR #2: Orchestrator + Growth Analyst (Observe & Plan Loop)', () => {
   });
 
   test('HTTP API: POST /api/agent/orchestrator/cycle runs autonomous cycle', async () => {
-    const res = await simulatedRequest(app, 'POST', '/api/agent/orchestrator/cycle');
+    const res = await client.request('POST', '/api/agent/orchestrator/cycle');
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
     assert.ok(res.body.cycleId);
@@ -202,12 +169,12 @@ describe('PR #2: Orchestrator + Growth Analyst (Observe & Plan Loop)', () => {
   });
 
   test('HTTP API: GET & POST /api/agent/scheduler endpoints toggle scheduler state', async () => {
-    const statusRes = await simulatedRequest(app, 'GET', '/api/agent/scheduler/status');
+    const statusRes = await client.request('GET', '/api/agent/scheduler/status');
     assert.equal(statusRes.status, 200);
     assert.equal(typeof statusRes.body.isRunning, 'boolean');
 
     // Toggle on
-    const toggleOnRes = await simulatedRequest(app, 'POST', '/api/agent/scheduler/toggle', {
+    const toggleOnRes = await client.request('POST', '/api/agent/scheduler/toggle', {
       active: true,
       intervalMs: 30000
     });
@@ -215,7 +182,7 @@ describe('PR #2: Orchestrator + Growth Analyst (Observe & Plan Loop)', () => {
     assert.equal(toggleOnRes.body.isRunning, true);
 
     // Toggle off
-    const toggleOffRes = await simulatedRequest(app, 'POST', '/api/agent/scheduler/toggle', {
+    const toggleOffRes = await client.request('POST', '/api/agent/scheduler/toggle', {
       active: false
     });
     assert.equal(toggleOffRes.status, 200);

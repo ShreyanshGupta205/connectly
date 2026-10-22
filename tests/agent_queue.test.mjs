@@ -1,6 +1,6 @@
-process.env.VERCEL = '1';
+delete process.env.VERCEL;
 process.env.NODE_ENV = 'test';
-import { test, describe, beforeEach, after } from 'node:test';
+import { test, describe, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
@@ -19,52 +19,16 @@ import {
 } from '../server/services/killSwitch.mjs';
 
 import { runAgentTask } from '../server/services/agentRunner.mjs';
+import { createTestClient } from './testServer.mjs';
 
 const { default: app, pool } = await import('../server/index.mjs');
 
-// Minimal in-memory request simulator
-async function simulatedRequest(app, method, url, body = null, headers = {}) {
-  return new Promise((resolve) => {
-    const req = {
-      method,
-      url,
-      headers: { 'content-type': 'application/json', ...headers },
-      body,
-    };
-
-    let statusCode = 200;
-    let responseHeaders = {};
-
-    const res = {
-      status(code) {
-        statusCode = code;
-        return this;
-      },
-      setHeader(name, value) {
-        responseHeaders[name.toLowerCase()] = value;
-        return this;
-      },
-      json(data) {
-        resolve({
-          status: statusCode,
-          headers: responseHeaders,
-          body: data
-        });
-      },
-      send(data) {
-        resolve({
-          status: statusCode,
-          headers: responseHeaders,
-          body: data
-        });
-      }
-    };
-
-    app.handle(req, res);
-  });
-}
-
 describe('PR #1: Autonomous Multi-Agent Framework & Task Queue', () => {
+  let client;
+
+  before(async () => {
+    client = await createTestClient(app);
+  });
   beforeEach(async () => {
     // Reset kill switch before each test
     await setKillSwitch(null, false, 'Reset for testing');
@@ -184,12 +148,12 @@ describe('PR #1: Autonomous Multi-Agent Framework & Task Queue', () => {
 
   test('HTTP API: POST /api/agent/tasks validates input and enqueues task', async () => {
     // Missing required fields
-    const invalidRes = await simulatedRequest(app, 'POST', '/api/agent/tasks', {});
+    const invalidRes = await client.request('POST', '/api/agent/tasks', {});
     assert.equal(invalidRes.status, 400);
     assert.equal(invalidRes.body.success, false);
 
     // Valid task enqueue
-    const validRes = await simulatedRequest(app, 'POST', '/api/agent/tasks', {
+    const validRes = await client.request('POST', '/api/agent/tasks', {
       type: 'review_hook',
       assignedAgent: 'brand_gate',
       input: { hook: 'Stop using linktree' },
@@ -202,7 +166,7 @@ describe('PR #1: Autonomous Multi-Agent Framework & Task Queue', () => {
   });
 
   test('HTTP API: GET /api/agent/stats returns queue and killSwitch telemetry', async () => {
-    const res = await simulatedRequest(app, 'GET', '/api/agent/stats');
+    const res = await client.request('GET', '/api/agent/stats');
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
     assert.ok(res.body.queue !== undefined);
@@ -212,7 +176,7 @@ describe('PR #1: Autonomous Multi-Agent Framework & Task Queue', () => {
   });
 
   test('HTTP API: POST /api/agent/kill-switch toggles system emergency pause', async () => {
-    const pauseRes = await simulatedRequest(app, 'POST', '/api/agent/kill-switch', {
+    const pauseRes = await client.request('POST', '/api/agent/kill-switch', {
       isPaused: true,
       reason: 'API trigger test'
     });
@@ -220,19 +184,22 @@ describe('PR #1: Autonomous Multi-Agent Framework & Task Queue', () => {
     assert.equal(pauseRes.body.success, true);
     assert.equal(pauseRes.body.killSwitch.is_paused, true);
 
-    const getRes = await simulatedRequest(app, 'GET', '/api/agent/kill-switch');
+    const getRes = await client.request('GET', '/api/agent/kill-switch');
     assert.equal(getRes.status, 200);
     assert.equal(getRes.body.is_paused, true);
     assert.equal(getRes.body.reason, 'API trigger test');
 
     // Unpause
-    const unpauseRes = await simulatedRequest(app, 'POST', '/api/agent/kill-switch', {
+    const unpauseRes = await client.request('POST', '/api/agent/kill-switch', {
       isPaused: false
     });
     assert.equal(unpauseRes.body.killSwitch.is_paused, false);
   });
 
   after(async () => {
+    if (client) {
+      await client.close();
+    }
     if (pool) {
       await pool.end();
     }

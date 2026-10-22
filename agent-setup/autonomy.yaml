@@ -1,0 +1,66 @@
+version: "1.0"
+runtime: "connectly-agent-framework"
+default_autonomy_level: "L3"
+
+levels:
+  L0:
+    name: "Full Autonomy"
+    status: "FORBIDDEN"
+    description: "Agents publish content and send outreach without human intervention."
+    auto_publish_content: false
+    auto_send_outreach: false
+    auto_commit_code: false
+    auto_write_github_issues: false
+
+  L1:
+    name: "Supervised High-Confidence"
+    status: "DISABLED"
+    description: "Agents may auto-publish content if Brand Gate confidence exceeds 0.99; outreach remains manual."
+    auto_publish_content: false
+    auto_send_outreach: false
+    auto_commit_code: false
+    auto_write_github_issues: false
+
+  L2:
+    name: "Staged Assistance"
+    status: "STANDBY"
+    description: "Agents draft copy and identify leads; all items placed in review queue with automated scheduling."
+    auto_publish_content: false
+    auto_send_outreach: false
+    auto_commit_code: false
+    auto_write_github_issues: false
+
+  L3:
+    name: "Strict Manual Gate"
+    status: "ACTIVE"
+    description: "Complete human-in-the-loop isolation. Zero automated network side-effects. All content, outreach, posters, and issue drafts require manual human approval and dispatch."
+    auto_publish_content: false
+    auto_send_outreach: false
+    auto_commit_code: false
+    auto_write_github_issues: false
+    brand_gate_required: true
+    claims_validation_required: true
+    kill_switch_enabled: true
+    safe_db_guard_enabled: true
+
+policies:
+  database_guard:
+    abort_on_host_patterns:
+      - "supabase"
+      - "aws.connect"
+      - "cloud.neon.tech"
+    allowed_hosts:
+      - "127.0.0.1"
+      - "localhost"
+
+  rate_limits:
+    scheduler_cycles_per_day: 2
+    nightly_task_cap: 10
+    quiet_hours_start: "23:00"
+    quiet_hours_end: "07:00"
+    api_rate_limit_per_min: 60
+
+  privacy_and_retention:
+    lead_retention_days: 30
+    require_manual_export: true
+    pii_masking_enabled: true
