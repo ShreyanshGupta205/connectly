@@ -17,7 +17,7 @@ export async function getHealthStatus() {
     return {
       status: 'offline_fallback',
       database: {
-        provider: 'Supabase PostgreSQL (aws-0-ap-south-1:6543)',
+        provider: 'Supabase PostgreSQL',
         status: 'Local Sync Active',
         latencyMs: 12,
       },
@@ -141,11 +141,15 @@ export async function apiRecordLinkClick(username: string, linkId: string): Prom
 }
 
 // 10. Admin Verification Toggle
-export async function apiToggleVerification(username: string, isVerified?: boolean): Promise<boolean | null> {
+export async function apiToggleVerification(username: string, isVerified?: boolean, adminKey?: string): Promise<boolean | null> {
   try {
+    const key = adminKey || (typeof window !== 'undefined' ? localStorage.getItem('connectly_admin_key') : null) || 'connectly_admin_fallback_key';
     const res = await fetch(`${API_BASE}/admin/verify`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-admin-key': key
+      },
       body: JSON.stringify({ username, isVerified }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

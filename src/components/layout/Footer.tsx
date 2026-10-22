@@ -149,7 +149,12 @@ export const Footer: React.FC<FooterProps> = ({ navigateTo }) => {
           </span>
         </div>
         <div className="flex items-center gap-5">
-          <span className="hover:text-slate-400 cursor-pointer">Privacy Policy</span>
+          <button 
+            onClick={() => navigateTo('privacy')} 
+            className="hover:text-slate-300 transition-colors cursor-pointer text-xs"
+          >
+            Privacy Policy
+          </button>
           <span className="hover:text-slate-400 cursor-pointer">Terms of Service</span>
           <span className="hover:text-slate-400 cursor-pointer">Security & GDPR</span>
         </div>

@@ -60,8 +60,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ navigateTo }) => {
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
 
-  // Password & DB secret visibility
-  const [showDbPassword, setShowDbPassword] = useState(false);
   const [isPingingDb, setIsPingingDb] = useState(false);
   const [pingLatency, setPingLatency] = useState<number | null>(null);
 
@@ -130,7 +128,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ navigateTo }) => {
     setTimeout(() => {
       setIsPingingDb(false);
       setPingLatency(Math.floor(Math.random() * 25) + 18); // 18-42ms latency simulation
-      toast.success('Supabase PostgreSQL pooler is operational', 'Latency: 24ms (aws-0-ap-south-1)');
+      toast.success('Supabase PostgreSQL pooler is operational', 'Latency: 24ms (Cloud Pooler)');
     }, 600);
   };
 
@@ -369,7 +367,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ navigateTo }) => {
               </div>
               <div>
                 <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">PostgreSQL Pooler</p>
-                <p className="text-sm font-bold text-white mt-0.5">Supabase ap-south-1</p>
+                <p className="text-sm font-bold text-white mt-0.5">Supabase Managed Pooler</p>
                 <p className="text-[11px] text-emerald-400 font-medium mt-0.5">● Active on Port 6543</p>
               </div>
             </div>
@@ -645,7 +643,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ navigateTo }) => {
                   <span>PostgreSQL Database</span>
                 </div>
                 <h3 className="text-xl font-black text-white">Supabase Cloud Infrastructure</h3>
-                <p className="text-xs text-slate-400 mt-1">Region: AWS South Asia (Mumbai, aws-0-ap-south-1)</p>
+                <p className="text-xs text-slate-400 mt-1">Region: Supabase Cloud Managed Pooler</p>
               </div>
 
               <button
@@ -663,20 +661,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ navigateTo }) => {
             <div className="space-y-3 pt-2">
               <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-300">Transaction Mode Pooler (IPv4-Only · Port 6543)</span>
+                  <span className="text-xs font-bold text-slate-300">Transaction Mode Pooler (Port 6543)</span>
                   <button 
                     onClick={() => {
-                      navigator.clipboard.writeText(`postgresql://postgres.rbmcfsuupcojncyqmywm:Connectly%402026@aws-0-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true`);
-                      toast.success('DATABASE_URL copied to clipboard');
+                      navigator.clipboard.writeText('postgresql://postgres.<project-ref>:[YOUR-PASSWORD]@<pooler-host>:6543/postgres');
+                      toast.success('Connection string template copied');
                     }}
                     className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold"
                   >
                     <Copy className="w-3.5 h-3.5" />
-                    <span>Copy</span>
+                    <span>Copy Template</span>
                   </button>
                 </div>
                 <p className="font-mono text-xs text-emerald-400 break-all bg-slate-950 p-2.5 rounded-xl border border-white/5 select-all">
-                  postgresql://postgres.rbmcfsuupcojncyqmywm:{showDbPassword ? 'Connectly@2026' : '••••••••••••'}@aws-0-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true
+                  postgresql://postgres.&lt;project-ref&gt;:••••••••••••@&lt;pooler-host&gt;:6543/postgres
                 </p>
               </div>
 
@@ -685,28 +683,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ navigateTo }) => {
                   <span className="text-xs font-bold text-slate-300">Direct Session URL (Port 5432)</span>
                   <button 
                     onClick={() => {
-                      navigator.clipboard.writeText(`postgresql://postgres.rbmcfsuupcojncyqmywm:Connectly%402026@aws-0-ap-south-1.pooler.supabase.com:5432/postgres`);
-                      toast.success('DIRECT_URL copied to clipboard');
+                      navigator.clipboard.writeText('postgresql://postgres.<project-ref>:[YOUR-PASSWORD]@<direct-host>:5432/postgres');
+                      toast.success('Connection string template copied');
                     }}
                     className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold"
                   >
                     <Copy className="w-3.5 h-3.5" />
-                    <span>Copy</span>
+                    <span>Copy Template</span>
                   </button>
                 </div>
                 <p className="font-mono text-xs text-cyan-400 break-all bg-slate-950 p-2.5 rounded-xl border border-white/5 select-all">
-                  postgresql://postgres.rbmcfsuupcojncyqmywm:{showDbPassword ? 'Connectly@2026' : '••••••••••••'}@aws-0-ap-south-1.pooler.supabase.com:5432/postgres
+                  postgresql://postgres.&lt;project-ref&gt;:••••••••••••@&lt;direct-host&gt;:5432/postgres
                 </p>
               </div>
 
-              <div className="flex justify-end pt-1">
-                <button
-                  onClick={() => setShowDbPassword(!showDbPassword)}
-                  className="text-xs text-slate-400 hover:text-white transition-colors"
-                >
-                  {showDbPassword ? 'Hide Secret Password' : 'Show Masked Password'}
-                </button>
-              </div>
+              <p className="text-[11px] text-slate-500 text-right pt-1">
+                Copy credentials securely from Supabase Dashboard &gt; Project Settings &gt; Database &gt; Connect.
+              </p>
             </div>
 
           </div>
@@ -770,7 +763,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ navigateTo }) => {
               {[
                 { action: 'Super Admin Access Verified', time: 'Just now', target: ADMIN_EMAIL, icon: '🛡️' },
                 { action: 'Cloud Sync Heartbeat', time: '1 min ago', target: 'connectly-in Firestore', icon: '⚡' },
-                { action: 'PostgreSQL Pooler Health Verified', time: '5 mins ago', target: 'aws-0-ap-south-1', icon: '🐘' },
+                { action: 'PostgreSQL Pooler Health Verified', time: '5 mins ago', target: 'Cloud Pooler', icon: '🐘' },
                 { action: 'Initial Profiles Seeded', time: 'System Start', target: '4 Creator Accounts', icon: '👥' },
               ].map((log, i) => (
                 <div key={i} className="p-3 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-between">

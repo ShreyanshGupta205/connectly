@@ -1,7 +1,7 @@
 -- =====================================================================
 -- Connectly — Supabase PostgreSQL Database Schema
 -- Run this SQL in your Supabase SQL Editor:
--- https://supabase.com/dashboard/project/rbmcfsuupcojncyqmywm/sql/new
+-- https://supabase.com/dashboard/project/<project-ref>/sql/new
 -- =====================================================================
 
 -- 1. Create Profiles Table
