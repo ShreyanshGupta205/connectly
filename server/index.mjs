@@ -5,6 +5,23 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
+import { fileURLToPath } from 'url';
+import { 
+  enqueueTask, 
+  claimNextTask, 
+  completeTask, 
+  failTask, 
+  listTasks, 
+  getQueueStats 
+} from './services/agentQueue.mjs';
+import { 
+  getKillSwitchStatus, 
+  setKillSwitch, 
+  isSystemPaused 
+} from './services/killSwitch.mjs';
+import { 
+  runAgentTask 
+} from './services/agentRunner.mjs';
 
 dotenv.config();
 
@@ -17,7 +34,7 @@ app.use(express.json());
 // ── Database Configuration ──
 // Least-Privilege & Secrets Hygiene: Read strictly from environment variable DATABASE_URL.
 // Never hardcode database credentials or live project refs in server code.
-const connectionString = process.env.DATABASE_URL || '';
+const connectionString = (process.env.NODE_ENV === 'test' ? '' : (process.env.DATABASE_URL || ''));
 
 const pool = connectionString ? new pg.Pool({
   connectionString,
@@ -186,6 +203,17 @@ async function initDatabase() {
         createdAt: r.created_at
       };
     });
+
+    // 6. Ensure Autonomous Agent Framework tables exist
+    const schemaFile = path.join(process.cwd(), 'docs', 'sql', '002_agent_framework_schema.sql');
+    if (fs.existsSync(schemaFile)) {
+      try {
+        const agentSql = fs.readFileSync(schemaFile, 'utf8');
+        await client.query(agentSql);
+      } catch (schemaErr) {
+        console.warn('⚠️ Agent framework schema sync warning:', schemaErr.message);
+      }
+    }
 
     console.log(`✨ Clean Production Database ready. Loaded ${rows.rows.length} real profile(s).`);
     client.release();
@@ -1220,16 +1248,158 @@ app.get('/api/ai/funnel', async (req, res) => {
   }
 });
 
-// Export app for Vercel Serverless Functions & testing
+// ── PR #1: Autonomous Multi-Agent Framework Endpoints ──
+
+// 18. Task Queue Stats & Emergency Kill Switch Telemetry
+app.get('/api/agent/stats', async (req, res) => {
+  try {
+    const queue = await getQueueStats(pool);
+    const killSwitch = await getKillSwitchStatus(pool);
+    res.json({
+      success: true,
+      queue,
+      killSwitch,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 19. Query Tasks from Queue
+app.get('/api/agent/tasks', async (req, res) => {
+  try {
+    const { status, agent, limit } = req.query;
+    const tasks = await listTasks(pool, { status, agent, limit });
+    res.json({
+      success: true,
+      tasks,
+      count: tasks.length
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 20. Enqueue a new Agent Task
+app.post('/api/agent/tasks', async (req, res) => {
+  try {
+    const { type, assignedAgent, input, priority, parentTaskId, maxRetries } = req.body || {};
+    if (!type || !assignedAgent) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required task fields: "type" and "assignedAgent" are required.'
+      });
+    }
+
+    const task = await enqueueTask(pool, {
+      type,
+      assignedAgent,
+      input: input || {},
+      priority: priority !== undefined ? Number(priority) : 5,
+      parentTaskId: parentTaskId || null,
+      maxRetries: maxRetries !== undefined ? Number(maxRetries) : 3,
+    });
+
+    res.status(201).json({
+      success: true,
+      task
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 21. Emergency Kill Switch Status
+app.get('/api/agent/kill-switch', async (req, res) => {
+  try {
+    const status = await getKillSwitchStatus(pool);
+    res.json({
+      success: true,
+      ...status
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 22. Toggle Emergency Kill Switch
+app.post('/api/agent/kill-switch', async (req, res) => {
+  try {
+    const { isPaused, reason } = req.body || {};
+    if (typeof isPaused !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        error: '"isPaused" boolean field is required.'
+      });
+    }
+
+    const updated = await setKillSwitch(pool, isPaused, reason);
+    res.json({
+      success: true,
+      killSwitch: updated
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 23. Agent Execution Runs Telemetry
+app.get('/api/agent/runs', async (req, res) => {
+  try {
+    const agent = req.query.agent;
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+    
+    if (pool) {
+      let query = 'SELECT * FROM agent_runs';
+      const params = [];
+      if (agent) {
+        params.push(agent);
+        query += ' WHERE agent = $1';
+      }
+      params.push(limit);
+      query += ` ORDER BY created_at DESC LIMIT $${params.length};`;
+
+      const result = await pool.query(query, params);
+      return res.json({ success: true, runs: result.rows });
+    }
+
+    res.json({ success: true, runs: [] });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 24. Shared Learnings (Self-Improvement Memory)
+app.get('/api/agent/learnings', async (req, res) => {
+  try {
+    const activeOnly = req.query.active !== 'false';
+    if (pool) {
+      const query = activeOnly 
+        ? 'SELECT * FROM learnings WHERE active = true ORDER BY confidence DESC, created_at DESC LIMIT 50;'
+        : 'SELECT * FROM learnings ORDER BY created_at DESC LIMIT 50;';
+      const result = await pool.query(query);
+      return res.json({ success: true, learnings: result.rows });
+    }
+    res.json({ success: true, learnings: [] });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Export app, pool, and initDatabase for tests and serverless execution
+export { pool, initDatabase };
 export default app;
 
 // Start Server & Initialize Database (when running as standalone Node process)
-if (!process.env.VERCEL) {
+const isDirectExecution = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+if (isDirectExecution && !process.env.VERCEL) {
   app.listen(PORT, async () => {
     console.log(`🚀 Connectly Production Backend Server running on http://localhost:${PORT}`);
     await initDatabase();
   });
-} else {
+} else if (process.env.VERCEL && process.env.NODE_ENV !== 'test') {
   initDatabase().catch(err => console.error('Vercel DB Init Error:', err));
 }
+
 
