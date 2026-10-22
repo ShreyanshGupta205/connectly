@@ -27,6 +27,8 @@ import {
   apiRecordLinkClick,
   apiToggleVerification
 } from '../services/apiService';
+import { trackEvent } from '../utils/analytics';
+import { checkAndTriggerActivation } from '../utils/activation';
 
 export const ADMIN_EMAIL = 'shreyanshg2005@gmail.com';
 
@@ -58,6 +60,7 @@ interface ProfileContextType {
   toggleLikeProfile: (username: string) => boolean; // returns true if now liked
   recordLinkClick: (username: string, linkId: string) => void;
   recordProfileView: (username: string, isQr?: boolean) => void;
+  recordProfileShare: (username: string, platform?: 'whatsapp' | 'twitter' | 'linkedin' | 'telegram' | 'clipboard' | 'native_share', source?: 'public_profile' | 'dashboard' | 'qr_modal' | 'command_palette') => void;
   switchProfile: (username: string) => void;
   createNewProfile: (username: string, name: string, email?: string) => boolean;
   loginAs: (username: string) => void;
@@ -260,6 +263,10 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
           saveProfileToFirestore(newProfile);
           apiCreateProfile(newProfile);
+          trackEvent('profile_claimed', {
+            method: 'google',
+            theme_id: newProfile.themeId,
+          });
 
           return {
             ...prev,
@@ -328,10 +335,27 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const updateCurrentProfile = (updates: Partial<UserProfile>) => {
     setProfiles(prev => {
       const existing = prev[currentUsername] || prev['shreyansh'];
-      const updated = { ...existing, ...updates };
+      let updated: UserProfile = { ...existing, ...updates };
+
+      // Evaluate North Star activation: 3+ links AND shared at least once
+      checkAndTriggerActivation(updated, (activatedProfile) => {
+        updated = activatedProfile;
+      });
+
       // Async sync to Firestore & PostgreSQL
       saveProfileToFirestore(updated);
       apiUpdateProfile(currentUsername, updated);
+
+      if (updates.bio !== undefined || updates.links !== undefined || updates.avatarUrl !== undefined) {
+        trackEvent('profile_completed', {
+          links_count: updated.links?.length || 0,
+          has_avatar: Boolean(updated.avatarUrl),
+          has_bio: Boolean(updated.bio),
+          has_tagline: Boolean(updated.tagline),
+          theme_id: updated.themeId,
+        });
+      }
+
       return {
         ...prev,
         [currentUsername]: updated,
@@ -343,7 +367,12 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setProfiles(prev => {
       const existing = prev[username];
       if (!existing) return prev;
-      const updated = { ...existing, ...updates };
+      let updated: UserProfile = { ...existing, ...updates };
+
+      checkAndTriggerActivation(updated, (activatedProfile) => {
+        updated = activatedProfile;
+      });
+
       saveProfileToFirestore(updated);
       apiUpdateProfile(username, updated);
       return {
@@ -466,6 +495,10 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // Increment in Firestore & PostgreSQL Backend
       incrementProfileLikeInFirestore(username, 1);
       apiLikeProfile(username, 1);
+      trackEvent('like_given', {
+        is_guest: !currentUser,
+        theme_id: profile.themeId,
+      });
       return true;
     } else {
       // Unlike
@@ -536,6 +569,41 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // Firestore & PostgreSQL record
     incrementProfileViewInFirestore(username, isQr);
     apiRecordProfileView(username, isQr);
+  };
+
+  const recordProfileShare = (
+    username: string,
+    platform: 'whatsapp' | 'twitter' | 'linkedin' | 'telegram' | 'clipboard' | 'native_share' = 'clipboard',
+    source: 'public_profile' | 'dashboard' | 'qr_modal' | 'command_palette' = 'dashboard'
+  ) => {
+    const clean = username.replace(/^@/, '');
+    setProfiles(prev => {
+      const target = prev[clean];
+      if (!target) return prev;
+
+      let updated: UserProfile = {
+        ...target,
+        stats: {
+          ...target.stats,
+          shares: (target.stats?.shares || 0) + 1,
+        },
+      };
+
+      // Check if profile is now activated (3+ links AND shared at least once)
+      checkAndTriggerActivation(updated, (activatedProfile) => {
+        updated = activatedProfile;
+      });
+
+      saveProfileToFirestore(updated);
+      apiUpdateProfile(clean, updated);
+
+      return {
+        ...prev,
+        [clean]: updated,
+      };
+    });
+
+    trackEvent('profile_shared', { platform, source });
   };
 
   const isUsernameAvailable = (username: string): boolean => {
@@ -719,6 +787,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
         toggleLikeProfile,
         recordLinkClick,
         recordProfileView,
+        recordProfileShare,
         switchProfile,
         createNewProfile,
         loginAs,

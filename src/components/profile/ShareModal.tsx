@@ -12,6 +12,7 @@ import type { UserProfile } from '../../types';
 import { getSocialShareUrls } from '../../utils/qrUtils';
 import { LinkedInIcon, TwitterIcon } from '../../utils/platformIcons';
 import { BrandIcon } from '../common/BrandLogo';
+import { useProfile } from '../../context/ProfileContext';
 
 interface ShareModalProps {
   profile: UserProfile;
@@ -21,6 +22,7 @@ interface ShareModalProps {
 }
 
 export const ShareModal: React.FC<ShareModalProps> = ({ profile, isOpen, onClose, onOpenQR }) => {
+  const { recordProfileShare } = useProfile();
   const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
@@ -30,6 +32,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ profile, isOpen, onClose
   const handleCopy = () => {
     navigator.clipboard.writeText(shareUrls.directUrl);
     setCopied(true);
+    recordProfileShare(profile.username, 'clipboard', 'public_profile');
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -41,6 +44,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ profile, isOpen, onClose
           text: `Check out ${profile.name}'s digital identity and verified links!`,
           url: shareUrls.directUrl,
         });
+        recordProfileShare(profile.username, 'native_share', 'public_profile');
       } catch (err) {
         console.error('Share cancelled or failed', err);
       }
@@ -48,6 +52,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ profile, isOpen, onClose
       handleCopy();
     }
   };
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
@@ -99,6 +104,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ profile, isOpen, onClose
               href={shareUrls.whatsapp}
               target="_blank"
               rel="noreferrer"
+              onClick={() => recordProfileShare(profile.username, 'whatsapp', 'public_profile')}
               className="p-3 rounded-2xl bg-[#25D366]/10 hover:bg-[#25D366]/20 border border-[#25D366]/30 text-emerald-400 font-semibold text-xs flex items-center gap-2.5 transition-colors"
             >
               <Phone className="w-4 h-4 text-[#25D366]" />
@@ -109,6 +115,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ profile, isOpen, onClose
               href={shareUrls.twitter}
               target="_blank"
               rel="noreferrer"
+              onClick={() => recordProfileShare(profile.username, 'twitter', 'public_profile')}
               className="p-3 rounded-2xl bg-[#1DA1F2]/10 hover:bg-[#1DA1F2]/20 border border-[#1DA1F2]/30 text-sky-400 font-semibold text-xs flex items-center gap-2.5 transition-colors"
             >
               <TwitterIcon className="w-4 h-4 text-[#1DA1F2]" />
@@ -119,6 +126,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ profile, isOpen, onClose
               href={shareUrls.linkedin}
               target="_blank"
               rel="noreferrer"
+              onClick={() => recordProfileShare(profile.username, 'linkedin', 'public_profile')}
               className="p-3 rounded-2xl bg-[#0A66C2]/10 hover:bg-[#0A66C2]/20 border border-[#0A66C2]/30 text-blue-400 font-semibold text-xs flex items-center gap-2.5 transition-colors"
             >
               <LinkedInIcon className="w-4 h-4 text-[#0A66C2]" />
@@ -129,11 +137,13 @@ export const ShareModal: React.FC<ShareModalProps> = ({ profile, isOpen, onClose
               href={shareUrls.telegram}
               target="_blank"
               rel="noreferrer"
+              onClick={() => recordProfileShare(profile.username, 'telegram', 'public_profile')}
               className="p-3 rounded-2xl bg-[#229ED9]/10 hover:bg-[#229ED9]/20 border border-[#229ED9]/30 text-cyan-400 font-semibold text-xs flex items-center gap-2.5 transition-colors"
             >
               <Send className="w-4 h-4 text-[#229ED9]" />
               <span>Telegram</span>
             </a>
+
 
           </div>
         </div>

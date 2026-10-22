@@ -28,18 +28,26 @@ const FALLBACK_PROFILES = {
   }
 };
 
-const connectionString = process.env.DATABASE_URL;
-
 let pool = null;
+let currentConnStr = null;
+
 function getPool() {
+  // Least-privilege requirement: read ONLY OG_DATABASE_URL with pooled og_reader credentials.
+  // Never fall back to DATABASE_URL or administrative connection strings.
+  const connectionString = process.env.OG_DATABASE_URL;
   if (!connectionString) {
     return null;
   }
-  if (!pool) {
+  if (!pool || currentConnStr !== connectionString) {
+    if (pool) {
+      try { pool.end(); } catch (e) {}
+    }
+    currentConnStr = connectionString;
     pool = new pg.Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },
-      max: 2,
+      max: 1, // Keep pool minimal in serverless edge environment
+      idleTimeoutMillis: 1000,
       connectionTimeoutMillis: 3000
     });
   }
@@ -96,6 +104,8 @@ function getGenericSiteHtml(siteUrl, customTitle, customDesc) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}</title>
   <meta name="description" content="${escapeHtml(desc)}">
+  <link rel="canonical" href="${escapeHtml(siteUrl)}">
+  <meta name="robots" content="index, follow">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Connectly">
   <meta property="og:url" content="${escapeHtml(siteUrl)}">
@@ -151,21 +161,43 @@ export default async function handler(req, res) {
     // Abuse / rate / input validation: handle must be <= 30 chars and match allowed identifier regex
     if (cleanHandle.length > 30 || !/^[a-z0-9_.-]+$/.test(cleanHandle)) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.setHeader('Cache-Control', 's-maxage=60');
+      res.setHeader('Cache-Control', 'public, s-maxage=60');
       return res.status(400).send(`<!DOCTYPE html><html><body><h1>400 Invalid Handle</h1><p>Username handles may only contain letters, numbers, periods, dashes, and underscores (max 30 characters).</p></body></html>`);
     }
 
     let profile = FALLBACK_PROFILES[cleanHandle] || null;
+    let dbFailed = false;
 
-    // 3. Database query: only fetch public profile fields (name, tagline, bio, avatar_url, theme_id)
+    // 3. Database query: only fetch public profile fields via OG_DATABASE_URL
     if (!profile) {
+      if (!process.env.OG_DATABASE_URL) {
+        // If OG_DATABASE_URL is unset, return generic no-store fallback
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(200).send(getGenericSiteHtml(siteUrl));
+      }
+
       try {
         const client = getPool();
         if (client) {
-          const result = await client.query(
-            'SELECT name, tagline, bio, avatar_url, theme_id FROM profiles WHERE LOWER(username) = $1 LIMIT 1',
-            [cleanHandle]
-          );
+          let result;
+          try {
+            result = await client.query(
+              'SELECT name, tagline, bio, avatar_url, theme_id FROM public_profiles WHERE LOWER(username) = $1 LIMIT 1',
+              [cleanHandle]
+            );
+          } catch (viewErr) {
+            // Fallback to profiles table if public_profiles view is not yet created
+            if (viewErr.code === '42P01') {
+              result = await client.query(
+                'SELECT name, tagline, bio, avatar_url, theme_id FROM profiles WHERE LOWER(username) = $1 LIMIT 1',
+                [cleanHandle]
+              );
+            } else {
+              throw viewErr;
+            }
+          }
+
           if (result.rows.length > 0) {
             const row = result.rows[0];
             profile = {
@@ -179,9 +211,16 @@ export default async function handler(req, res) {
           }
         }
       } catch (dbError) {
-        // If DB is unreachable and handle is unknown, gracefully return generic site OG tags
+        dbFailed = true;
         console.warn('Database connection failed in api/og.mjs:', dbError.message);
       }
+    }
+
+    // If DB is unreachable and handle was not found in static fallback, return generic site OG tags with no-store
+    if (dbFailed && !profile) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).send(getGenericSiteHtml(siteUrl));
     }
 
   // 4. Unknown Handle Handling: If no handle is matched, return 404 with noindex and claim link
@@ -200,6 +239,7 @@ export default async function handler(req, res) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(notFoundTitle)}</title>
   <meta name="description" content="${escapeHtml(notFoundDesc)}">
+  <link rel="canonical" href="${escapeHtml(claimUrl)}">
   <meta name="robots" content="noindex, nofollow">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Connectly">
@@ -228,7 +268,7 @@ export default async function handler(req, res) {
 </html>`;
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
+    res.setHeader('Cache-Control', 'public, s-maxage=60');
     return res.status(404).send(notFoundHtml);
   }
 
@@ -246,6 +286,8 @@ export default async function handler(req, res) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(pageTitle)}</title>
   <meta name="description" content="${escapeHtml(description)}">
+  <link rel="canonical" href="${escapeHtml(canonicalUrl)}">
+  <meta name="robots" content="index, follow">
 
   <!-- Open Graph / Facebook / WhatsApp / LinkedIn -->
   <meta property="og:type" content="profile">
@@ -295,12 +337,12 @@ export default async function handler(req, res) {
 </html>`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=86400');
+  res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=60');
   return res.status(200).send(html);
   } catch (unexpectedError) {
     console.error('Unhandled exception in api/og.mjs:', unexpectedError);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Cache-Control', 's-maxage=60');
+    res.setHeader('Cache-Control', 'no-store');
     return res.status(200).send(getGenericSiteHtml(siteUrl));
   }
 }

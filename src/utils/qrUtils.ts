@@ -50,7 +50,7 @@ export const downloadElementAsImage = async (
 };
 
 export const getSocialShareUrls = (username: string, profileName: string) => {
-  const url = profileUrl(username);
+  const url = profileUrl(username, 'share');
   const text = `Check out ${profileName}'s verified digital identity and links on Connectly! 🚀`;
 
   return {

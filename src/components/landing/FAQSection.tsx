@@ -13,7 +13,7 @@ export const FAQSection: React.FC = () => {
     },
     {
       q: 'What is the 1-Click vCard (.vcf) export feature?',
-      a: 'When someone scans your physical poster or visits your profile link, they can click "Save Contact". This downloads an RFC 6350 .vcf contact card that instantly adds your name, bio, website, and social channels into their iOS or Android Contacts app without manual typing.',
+      a: 'When someone scans your physical poster or visits your profile link, they can click "Save Contact". This downloads a standard .vcf contact card that instantly adds your name, bio, website, and social channels into their iOS or Android Contacts app without manual typing.',
     },
     {
       q: 'Can I track which links get the most clicks and where visitors come from?',

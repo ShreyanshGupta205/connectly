@@ -18,11 +18,12 @@ interface QRStudioTabProps {
 }
 
 export const QRStudioTab: React.FC<QRStudioTabProps> = ({ navigateTo }) => {
-  const { currentProfile, updateCurrentProfile } = useProfile();
+  const { currentProfile, updateCurrentProfile, recordProfileShare } = useProfile();
   const [downloading, setDownloading] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
 
-  const profileUrl = getProfileUrl(currentProfile.username);
+  const profileQrUrl = getProfileUrl(currentProfile.username, 'qr');
+  const profileShareUrl = getProfileUrl(currentProfile.username, 'share');
   const siteHostname = getSiteHostname();
 
   const qrSettings = currentProfile.qrSettings || {
@@ -195,7 +196,8 @@ export const QRStudioTab: React.FC<QRStudioTabProps> = ({ navigateTo }) => {
             </button>
             <button
               onClick={() => {
-                navigator.clipboard.writeText(profileUrl);
+                navigator.clipboard.writeText(profileShareUrl);
+                recordProfileShare(currentProfile.username, 'clipboard', 'dashboard');
                 setCopiedUrl(true);
                 setTimeout(() => setCopiedUrl(false), 2000);
               }}
@@ -244,7 +246,7 @@ export const QRStudioTab: React.FC<QRStudioTabProps> = ({ navigateTo }) => {
             {/* QR Code */}
             <div className="p-4 rounded-2xl bg-white shadow-xl inline-block mx-auto relative group">
               <QRCodeSVG
-                value={profileUrl}
+                value={profileQrUrl}
                 size={160}
                 level="H"
                 fgColor={qrSettings.fgColor === '#ffffff' ? '#000000' : qrSettings.fgColor}

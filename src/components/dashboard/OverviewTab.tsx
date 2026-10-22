@@ -25,17 +25,18 @@ interface OverviewTabProps {
 }
 
 export const OverviewTab: React.FC<OverviewTabProps> = ({ navigateTo, onOpenAI }) => {
-  const { currentProfile, analytics, setActiveTab, isCloudConnected } = useProfile();
+  const { currentProfile, analytics, setActiveTab, isCloudConnected, recordProfileShare } = useProfile();
   const toast = useToast();
   const [copied, setCopied] = useState(false);
   const [chartMetric, setChartMetric] = useState<'views' | 'clicks'>('views');
 
-  const profileUrl = getProfileUrl(currentProfile.username);
+  const profileUrl = getProfileUrl(currentProfile.username, 'share');
   const siteHostname = getSiteHostname();
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(profileUrl);
     setCopied(true);
+    recordProfileShare(currentProfile.username, 'clipboard', 'dashboard');
     toast.success('Profile Link Copied!', profileUrl);
     setTimeout(() => setCopied(false), 2000);
   };

@@ -130,6 +130,8 @@ export interface UserProfile {
   qrSettings: QRSettings;
   plan: 'free' | 'pro' | 'creator';
   createdAt: string;
+  isActivated?: boolean;
+  activatedAt?: string;
   email?: string;
   location?: string;
   category?: 'Developer' | 'AI Builder' | 'Creator' | 'Student' | 'Designer' | 'Founder';

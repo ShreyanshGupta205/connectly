@@ -164,14 +164,17 @@ describe('Canonical URL Builders - Zero /#/ Guarantee', () => {
     return 'https://connectly-hazel.vercel.app';
   }
 
-  function profileUrl(handle, envSiteUrl, windowOrigin) {
+  function profileUrl(handle, source, envSiteUrl, windowOrigin) {
     const clean = (handle || '').replace(/^[@#/]+/, '').trim();
     const site = getSiteUrl(envSiteUrl, windowOrigin);
-    return `${site}/@${clean}`;
+    const base = `${site}/@${clean}`;
+    if (!source) return base;
+    const cleanSource = source.replace(/^\?s=/, '').trim();
+    return cleanSource ? `${base}?s=${encodeURIComponent(cleanSource)}` : base;
   }
 
   function getSocialShareUrls(username, profileName, envSiteUrl, windowOrigin) {
-    const url = profileUrl(username, envSiteUrl, windowOrigin);
+    const url = profileUrl(username, 'share', envSiteUrl, windowOrigin);
     const text = `Check out ${profileName}'s verified digital identity and links on Connectly! 🚀`;
 
     return {
@@ -186,7 +189,7 @@ describe('Canonical URL Builders - Zero /#/ Guarantee', () => {
   }
 
   test('profileUrl never returns /#/ for standard handles', () => {
-    const url = profileUrl('shreyansh', 'https://connectly.bio');
+    const url = profileUrl('shreyansh', null, 'https://connectly.bio');
     assert.equal(url, 'https://connectly.bio/@shreyansh');
     assert.ok(!url.includes('/#/'), 'Must not contain /#/');
   });
@@ -194,35 +197,57 @@ describe('Canonical URL Builders - Zero /#/ Guarantee', () => {
   test('profileUrl strips leading @, #, or /#/@ and returns canonical path', () => {
     const variants = ['@shreyansh', 'shreyansh', '/@shreyansh', '/#/@shreyansh', '#/@shreyansh'];
     for (const v of variants) {
-      const url = profileUrl(v, 'https://connectly.bio');
+      const url = profileUrl(v, null, 'https://connectly.bio');
       assert.equal(url, 'https://connectly.bio/@shreyansh', `Failed on variant: ${v}`);
       assert.ok(!url.includes('/#/'), `Variant ${v} produced /#/ in ${url}`);
     }
   });
 
+  test('profileUrl appends ?s=qr when source is qr', () => {
+    const url = profileUrl('shreyansh', 'qr', 'https://connectly.bio');
+    assert.equal(url, 'https://connectly.bio/@shreyansh?s=qr');
+  });
+
+  test('profileUrl appends ?s=poster when source is poster', () => {
+    const url = profileUrl('shreyansh', 'poster', 'https://connectly.bio');
+    assert.equal(url, 'https://connectly.bio/@shreyansh?s=poster');
+  });
+
+  test('profileUrl appends ?s=share when source is share', () => {
+    const url = profileUrl('shreyansh', 'share', 'https://connectly.bio');
+    assert.equal(url, 'https://connectly.bio/@shreyansh?s=share');
+  });
+
+  test('profileUrl normalizes leading ?s= if passed', () => {
+    const url = profileUrl('shreyansh', '?s=qr', 'https://connectly.bio');
+    assert.equal(url, 'https://connectly.bio/@shreyansh?s=qr');
+  });
+
   test('profileUrl respects VITE_SITE_URL env var', () => {
-    const url = profileUrl('alex', 'https://mycustomdomain.com');
+    const url = profileUrl('alex', null, 'https://mycustomdomain.com');
     assert.equal(url, 'https://mycustomdomain.com/@alex');
     assert.ok(!url.includes('/#/'));
   });
 
   test('profileUrl falls back to window.location.origin when env unset', () => {
-    const url = profileUrl('alex', null, 'http://localhost:5173');
+    const url = profileUrl('alex', null, null, 'http://localhost:5173');
     assert.equal(url, 'http://localhost:5173/@alex');
     assert.ok(!url.includes('/#/'));
   });
 
   test('profileUrl falls back to staging domain when both env and window are unset', () => {
-    const url = profileUrl('alex', null, null);
+    const url = profileUrl('alex', null, null, null);
     assert.equal(url, 'https://connectly-hazel.vercel.app/@alex');
     assert.ok(!url.includes('/#/'));
   });
 
-  test('getSocialShareUrls generates zero /#/ across all platform share targets', () => {
+  test('getSocialShareUrls generates zero /#/ and includes ?s=share attribution', () => {
     const shares = getSocialShareUrls('shreyansh', 'Shreyansh Gupta', 'https://connectly-hazel.vercel.app');
+    assert.equal(shares.directUrl, 'https://connectly-hazel.vercel.app/@shreyansh?s=share');
     for (const [platform, link] of Object.entries(shares)) {
       assert.ok(!link.includes('/#/'), `Platform ${platform} URL contained /#/: ${link}`);
       assert.ok(link.includes('%2F%40shreyansh') || link.includes('/@shreyansh'), `Platform ${platform} missing canonical handle in ${link}`);
+      assert.ok(link.includes('s%3Dshare') || link.includes('s=share'), `Platform ${platform} missing s=share attribution in ${link}`);
     }
   });
 });
