@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# Disallow API and internal dashboard state from raw search indexing
+Disallow: /api/
+
+# Sitemap location
+Sitemap: https://connectly.bio/sitemap.xml

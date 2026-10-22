@@ -269,3 +269,39 @@ describe('Canonical URL Builders - Zero /#/ Guarantee', () => {
   });
 });
 
+describe('SEO, Robots & Sitemap Verification', () => {
+  test('robots.txt exists and specifies correct directives', async () => {
+    const { promises: fs } = await import('node:fs');
+    const path = await import('node:path');
+    const robotsPath = path.resolve('public/robots.txt');
+    const content = await fs.readFile(robotsPath, 'utf8');
+    assert.ok(content.includes('User-agent: *'), 'Must include User-agent');
+    assert.ok(content.includes('Allow: /'), 'Must allow /');
+    assert.ok(content.includes('Sitemap: https://connectly.bio/sitemap.xml'), 'Must point to sitemap.xml');
+  });
+
+  test('sitemap.xml exists and has valid XML schema', async () => {
+    const { promises: fs } = await import('node:fs');
+    const path = await import('node:path');
+    const sitemapPath = path.resolve('public/sitemap.xml');
+    const content = await fs.readFile(sitemapPath, 'utf8');
+    assert.ok(content.includes('<?xml version="1.0" encoding="UTF-8"?>'), 'Must include XML declaration');
+    assert.ok(content.includes('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'), 'Must include sitemaps schema');
+    assert.ok(content.includes('<loc>https://connectly.bio/</loc>'), 'Must include root URL');
+    assert.ok(content.includes('<loc>https://connectly.bio/privacy</loc>'), 'Must include /privacy URL');
+    assert.ok(content.includes('<loc>https://connectly.bio/@shreyansh</loc>'), 'Must include primary profile URL');
+  });
+
+  test('index.html contains canonical tag and WebApplication JSON-LD schema', async () => {
+    const { promises: fs } = await import('node:fs');
+    const path = await import('node:path');
+    const indexPath = path.resolve('index.html');
+    const content = await fs.readFile(indexPath, 'utf8');
+    assert.ok(content.includes('<link rel="canonical" href="https://connectly.bio" />'), 'Must include canonical link');
+    assert.ok(content.includes('"@type": "WebApplication"'), 'Must include WebApplication schema');
+    assert.ok(content.includes('"name": "Connectly"'), 'Must include brand name in schema');
+    assert.ok(content.includes('&display=swap'), 'Must include font-display: swap');
+  });
+});
+
+
