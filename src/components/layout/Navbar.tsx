@@ -8,7 +8,8 @@ import {
   Search, 
   ExternalLink, 
   LogOut,
-  ShieldCheck
+  ShieldCheck,
+  Sparkles
 } from 'lucide-react';
 import { useProfile } from '../../context/ProfileContext';
 import { GoogleAuthModal, GoogleIcon } from '../common/GoogleAuthModal';
@@ -63,18 +64,39 @@ export const Navbar: React.FC<NavbarProps> = ({ currentRoute, navigateTo, onOpen
       icon: null,
       active: false
     },
-    ...(isAdmin ? [{
-      label: 'Admin',
-      onClick: () => navigateTo('admin'),
-      icon: <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />,
-      active: false
-    }] : [])
+    ...(isAdmin ? [
+      {
+        label: 'AI Mission',
+        onClick: () => navigateTo('mission-control'),
+        icon: <Sparkles className="w-3.5 h-3.5 text-purple-400" />,
+        active: false
+      },
+      {
+        label: 'Admin',
+        onClick: () => navigateTo('admin'),
+        icon: <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />,
+        active: false
+      }
+    ] : [])
   ] : [
     { label: 'Home', onClick: () => navigateTo('landing'), icon: null, active: false },
     { label: 'Studio', onClick: () => navigateTo('dashboard'), icon: <Layers className="w-3.5 h-3.5" />, active: currentRoute === 'dashboard' },
     { label: 'Live Profile', onClick: () => navigateTo(`@${currentProfile.username}`), icon: <User className="w-3.5 h-3.5" />, active: currentRoute.startsWith('@') || currentRoute.startsWith('/@') },
     { label: 'Print Poster', onClick: () => navigateTo(`poster-${currentProfile.username}`), icon: <QrCode className="w-3.5 h-3.5" />, active: currentRoute.startsWith('poster-') },
-    ...(isAdmin ? [{ label: 'Admin', onClick: () => navigateTo('admin'), icon: <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />, active: currentRoute === 'admin' }] : [])
+    ...(isAdmin ? [
+      { 
+        label: 'AI Mission', 
+        onClick: () => navigateTo('mission-control'), 
+        icon: <Sparkles className="w-3.5 h-3.5 text-purple-400" />, 
+        active: currentRoute === 'mission-control' 
+      },
+      { 
+        label: 'Admin', 
+        onClick: () => navigateTo('admin'), 
+        icon: <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />, 
+        active: currentRoute === 'admin' 
+      }
+    ] : [])
   ];
 
   return (

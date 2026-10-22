@@ -19,7 +19,8 @@ import {
   Copy,
   LogOut,
   Activity,
-  Server
+  Server,
+  Sparkles
 } from 'lucide-react';
 import { useProfile, ADMIN_EMAIL } from '../../context/ProfileContext';
 import { useToast } from '../../context/ToastContext';
@@ -251,6 +252,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ navigateTo }) => {
 
           {/* Quick Header Actions */}
           <div className="flex flex-wrap items-center gap-3">
+            <button
+              id="admin-launch-ai-mission-btn"
+              onClick={() => navigateTo('mission-control')}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-purple-600/30 transition-all hover:scale-105 active:scale-95"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-purple-200" />
+              <span>AI Mission Control</span>
+            </button>
             <button
               onClick={handleExportBackup}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-bold text-xs transition-all hover:scale-105 active:scale-95"

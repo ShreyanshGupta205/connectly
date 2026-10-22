@@ -59,6 +59,10 @@ export function pathToRoute(pathname: string): string {
     return 'admin';
   }
 
+  if (clean === 'mission-control' || clean === 'ai-admin') {
+    return 'mission-control';
+  }
+
   if (clean === 'privacy') {
     return 'privacy';
   }
@@ -81,7 +85,7 @@ export function pathToRoute(pathname: string): string {
 
   // Fallback for vanity handle without @ prefix if single segment (e.g. /shreyansh)
   // excluding known static paths
-  const knownPaths = ['features', 'pricing', 'about', 'api', 'assets', 'privacy'];
+  const knownPaths = ['features', 'pricing', 'about', 'api', 'assets', 'privacy', 'mission-control', 'ai-admin'];
   if (!clean.includes('/') && !knownPaths.includes(clean.toLowerCase())) {
     return '@' + clean;
   }
@@ -105,6 +109,10 @@ export function routeToPath(route: string): string {
 
   if (clean === 'admin') {
     return '/admin';
+  }
+
+  if (clean === 'mission-control' || clean === 'ai-admin') {
+    return '/mission-control';
   }
 
   if (clean === 'privacy') {
