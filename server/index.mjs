@@ -30,6 +30,9 @@ import {
   getSchedulerStatus, 
   executeTick 
 } from './services/agentScheduler.mjs';
+import { executeContentTask, generateDeterministicDraft } from './agents/content.mjs';
+import { validateContentCopy, executeBrandGateReview } from './agents/brandGate.mjs';
+import { processAgentQueueOnce } from './services/agentWorker.mjs';
 
 dotenv.config();
 
@@ -1456,6 +1459,52 @@ app.post('/api/agent/scheduler/toggle', (req, res) => {
     res.json({
       success: true,
       ...getSchedulerStatus()
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── PR #3: Content Agent + Fact-Check/Brand Gate Endpoints ──
+
+// 29. Generate Channel-Specific Content Draft
+app.post('/api/agent/content/draft', async (req, res) => {
+  try {
+    const { platform = 'x', topic = 'Connectly builder launch', bottleneckTarget = 'multi_link_completion' } = req.body || {};
+    const draft = generateDeterministicDraft(platform, topic, bottleneckTarget);
+    res.json({
+      success: true,
+      draft
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 30. Test Content Copy against Brand Gate
+app.post('/api/agent/brand-gate/validate', (req, res) => {
+  try {
+    const { text } = req.body || {};
+    if (typeof text !== 'string') {
+      return res.status(400).json({ success: false, error: '"text" string field is required.' });
+    }
+    const evaluation = validateContentCopy(text);
+    res.json({
+      success: true,
+      ...evaluation
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 31. Trigger Worker Queue Processing Pass
+app.post('/api/agent/worker/process', async (req, res) => {
+  try {
+    const result = await processAgentQueueOnce(pool);
+    res.json({
+      success: true,
+      ...result
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
