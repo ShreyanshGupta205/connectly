@@ -183,8 +183,8 @@ export async function executeBrandGateReview(pool, task) {
       await pool.query(
         `INSERT INTO post_performance (
           id, post_id, platform, hook_style, audience, copy_preview, 
-          impressions, clicks, signups, activated_profiles, published_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, 0, 0, 0, 0, NULL)
+          impressions, clicks, signups, activations
+        ) VALUES ($1, $2, $3, $4, $5, $6, 0, 0, 0, 0)
         ON CONFLICT (id) DO NOTHING;`,
         [
           postId,
