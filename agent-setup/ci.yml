@@ -1,0 +1,102 @@
+name: Connectly CI & Security Guard
+
+on:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-typecheck:
+    name: 1. Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Oxlint
+        run: npm run lint
+
+      - name: Run TypeScript typecheck
+        run: npx tsc -b
+
+  security-and-secrets:
+    name: 2. Gitleaks Secrets Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code (full depth for git history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Run Gitleaks scanner
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Run Custom Deep Secret Scanner (Repo + dist/)
+        run: node tools/secret_scanner.mjs
+
+      - name: Run npm security audit (Critical threshold)
+        run: npm audit --audit-level=critical
+
+  test-suite:
+    name: 3. Test Matrix (Supabase-Host Guard Active)
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: "postgresql://test_user:test_pass@127.0.0.1:5432/test_connectly"
+      NODE_ENV: "test"
+      AGENTS_ENABLED: "false"
+      ADMIN_API_KEY: "ci_test_admin_key_only"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Supabase-host abort guard in test environment
+        run: node --test tests/db_guard.test.mjs
+
+      - name: Run full unit, integration & Brand Gate test suite
+        run: npm test
+
+      - name: Run Product Quality & SEO Audit
+        run: |
+          npm run build
+          node agent-setup/audit.mjs

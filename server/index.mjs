@@ -32,13 +32,35 @@ import {
 } from './services/agentScheduler.mjs';
 import { executeContentTask, generateDeterministicDraft } from './agents/content.mjs';
 import { validateContentCopy, executeBrandGateReview } from './agents/brandGate.mjs';
-import { executeOutreachTask } from './agents/outreach.mjs';
+import { 
+  executeOutreachTask,
+  ingestLeadsFromCsvOrPaste,
+  deleteLead,
+  purgeExpiredLeads,
+  listActiveLeads
+} from './agents/outreach.mjs';
 import { executeQaTask, auditProfileIntegrity } from './agents/qaEngineer.mjs';
 import { processAgentQueueOnce } from './services/agentWorker.mjs';
 import { createExperiment, recordObservation, listExperiments } from './services/experimentEngine.mjs';
 import { registerPromptVersion, recordPromptEvaluation, getActivePromptVersion } from './services/promptEvolution.mjs';
+import {
+  recordFounderFeedback,
+  listFeedback,
+  ingestOutcomes,
+  listOutcomes,
+  dumpContentPrompt,
+  evaluateAbExperimentWithMinSampleSize,
+  runWeeklyRetro,
+  activatePromptVersion,
+  runFeedbackLoopDryRun
+} from './services/feedbackLoop.mjs';
+
+import { assertSafeDatabaseUrl, validateAgentEnvironmentDbSafety } from './services/dbGuard.mjs';
 
 dotenv.config();
+
+// Enforce Hard Rule 2: Never connect to or write to the production database
+validateAgentEnvironmentDbSafety();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -50,6 +72,9 @@ app.use(express.json());
 // Least-Privilege & Secrets Hygiene: Read strictly from environment variable DATABASE_URL.
 // Never hardcode database credentials or live project refs in server code.
 const connectionString = (process.env.NODE_ENV === 'test' ? '' : (process.env.DATABASE_URL || ''));
+if (connectionString && process.env.AGENTS_ENABLED === 'true') {
+  assertSafeDatabaseUrl(connectionString, 'DATABASE_URL');
+}
 
 const pool = connectionString ? new pg.Pool({
   connectionString,
@@ -219,16 +244,8 @@ async function initDatabase() {
       };
     });
 
-    // 6. Ensure Autonomous Agent Framework tables exist
-    const schemaFile = path.join(process.cwd(), 'docs', 'sql', '002_agent_framework_schema.sql');
-    if (fs.existsSync(schemaFile)) {
-      try {
-        const agentSql = fs.readFileSync(schemaFile, 'utf8');
-        await client.query(agentSql);
-      } catch (schemaErr) {
-        console.warn('⚠️ Agent framework schema sync warning:', schemaErr.message);
-      }
-    }
+    // Note: Migration 002 (agent framework schema) is isolated to local AGENT_DATABASE_URL
+    // and is NEVER executed against production DB.
 
     console.log(`✨ Clean Production Database ready. Loaded ${rows.rows.length} real profile(s).`);
     client.release();
@@ -484,7 +501,7 @@ function verifyProfileOwnership(req, profile) {
 }
 
 function verifyAdminCaller(req) {
-  const configuredAdminSecret = process.env.ADMIN_SECRET_KEY || 'connectly_admin_fallback_key';
+  const configuredAdminSecret = process.env.ADMIN_SECRET_KEY || process.env.CONNECTLY_ADMIN_KEY || 'connectly_admin_fallback_key';
   const authHeader = req.headers['authorization'];
   const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
   const callerKey = req.headers['x-admin-key'] || bearerToken;
@@ -880,6 +897,44 @@ app.get('/api/admin/export', (req, res) => {
     profiles: memoryProfiles,
   });
 });
+
+// ── Agent & Telemetry Router Security Middleware (Step 2) ──
+// 1. In Vercel serverless environment, return 404 Not Found
+// 2. In all environments, enforce Admin Authentication (x-admin-key or Authorization Bearer)
+// 3. Enforce Rate Limiting (60 requests/minute per caller)
+
+const agentRateLimits = new Map();
+function agentRateLimiter(req, res, next) {
+  const ip = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'local';
+  const now = Date.now();
+  const windowMs = 60 * 1000;
+  const maxReq = 60;
+
+  const current = (agentRateLimits.get(ip) || []).filter(t => now - t < windowMs);
+  if (current.length >= maxReq) {
+    return res.status(429).json({ success: false, error: 'Too many agent API requests. Rate limit exceeded (60 req/min).' });
+  }
+  current.push(now);
+  agentRateLimits.set(ip, current);
+  next();
+}
+
+function requireAdminAuth(req, res, next) {
+  if (process.env.VERCEL) {
+    return res.status(404).json({ success: false, error: 'Endpoint unavailable in serverless environment' });
+  }
+
+  const auth = verifyAdminCaller(req);
+  if (!auth.authorized) {
+    return res.status(auth.status).json({ success: false, error: auth.error });
+  }
+  next();
+}
+
+// Mount security middleware
+app.use('/api/admin', agentRateLimiter);
+app.use('/api/ai', agentRateLimiter, requireAdminAuth);
+app.use('/api/agent', agentRateLimiter, requireAdminAuth);
 
 // ── AI Mission Control & Growth Engine Endpoints ──
 
@@ -1517,7 +1572,7 @@ app.post('/api/agent/worker/process', async (req, res) => {
 
 // ── PR #4: Outreach/Community Agent + QA/Engineer Agent Endpoints ──
 
-// 32. Outreach Agent: Scout Builder Leads & Stage Invites
+// 32. Outreach Agent: Process Manually Imported Leads & Stage Invites
 app.post('/api/agent/outreach/scout', async (req, res) => {
   try {
     const { targetNiche = 'Hackathon Competitor', limit = 3 } = req.body || {};
@@ -1530,6 +1585,155 @@ app.post('/api/agent/outreach/scout', async (req, res) => {
       success: true,
       ...result
     });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 32b. Outreach Agent: Ingest Manual Leads (CSV or paste)
+app.post('/api/agent/outreach/import', async (req, res) => {
+  try {
+    const { csvContent } = req.body || {};
+    if (!csvContent) {
+      return res.status(400).json({ success: false, error: 'csvContent is required' });
+    }
+    const result = await ingestLeadsFromCsvOrPaste(csvContent, pool);
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 32c. Outreach Agent: List active non-expired leads
+app.get('/api/agent/outreach/leads', async (req, res) => {
+  try {
+    const leads = await listActiveLeads(pool);
+    res.json({
+      success: true,
+      leads
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 32d. Outreach Agent: Delete lead by ID (privacy deletion command)
+app.delete('/api/agent/outreach/leads/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await deleteLead(id, pool);
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 32e. Outreach Agent: Purge expired leads (> 30 days retention)
+app.post('/api/agent/outreach/purge', async (req, res) => {
+  try {
+    const result = await purgeExpiredLeads(pool);
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── STEP 6: Feedback Loop & Learning Engine Endpoints ──
+
+// 32f. Record Founder Feedback (approve / edit / reject + reason_tag)
+app.post('/api/agent/feedback', async (req, res) => {
+  try {
+    const { draftId, platform, decision, reasonTag, draftText, finalText } = req.body || {};
+    const result = await recordFounderFeedback(pool, { draftId, platform, decision, reasonTag, draftText, finalText });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// 32g. List Founder Feedback
+app.get('/api/agent/feedback', async (req, res) => {
+  try {
+    const limit = Number(req.query.limit) || 50;
+    const items = await listFeedback(pool, limit);
+    res.json({ success: true, feedback: items });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 32h. Ingest Outcomes (post metrics + source visits ?s= + activated count)
+app.post('/api/agent/outcomes', async (req, res) => {
+  try {
+    const result = await ingestOutcomes(pool, req.body);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// 32i. List Ingested Outcomes
+app.get('/api/agent/outcomes', async (req, res) => {
+  try {
+    const limit = Number(req.query.limit) || 50;
+    const items = await listOutcomes(pool, limit);
+    res.json({ success: true, outcomes: items });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 32j. Dump Content Prompt with Top-N Learnings (Secrets Redacted)
+app.get('/api/agent/prompt/dump', async (req, res) => {
+  try {
+    const platform = req.query.platform || 'x';
+    const topN = Number(req.query.topN) || 3;
+    const dump = await dumpContentPrompt(pool, { platform, topN });
+    res.json({ success: true, ...dump });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 32k. Weekly Retro Dry Run (7 feedback rows -> diff -> before/after eval -> writer draft)
+app.post('/api/agent/retro/dry-run', async (req, res) => {
+  try {
+    const dryRun = await runFeedbackLoopDryRun(pool);
+    res.json({ success: true, ...dryRun });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 32l. Run Weekly Retro to Propose Prompt Version Diff
+app.post('/api/agent/retro/propose', async (req, res) => {
+  try {
+    const agent = req.body?.agent || 'content';
+    const proposal = await runWeeklyRetro(pool, { agent });
+    res.json({ success: true, proposal });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 32m. Activate Proposed Prompt Version (Requires Founder Approval + Eval Score check)
+app.post('/api/agent/retro/activate', async (req, res) => {
+  try {
+    const { proposedVersion, founderApproved, evalScore, previousScore } = req.body || {};
+    const result = await activatePromptVersion(pool, { proposedVersion, founderApproved, evalScore, previousScore });
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -1693,8 +1897,12 @@ if (isDirectExecution && !process.env.VERCEL) {
   app.listen(PORT, async () => {
     console.log(`🚀 Connectly Production Backend Server running on http://localhost:${PORT}`);
     await initDatabase();
-    // Launch autonomous background scheduler
-    startScheduler(pool, memoryProfiles);
+    // Launch autonomous background scheduler only if AGENTS_ENABLED is explicitly enabled
+    if (process.env.AGENTS_ENABLED === 'true') {
+      startScheduler(pool, memoryProfiles);
+    } else {
+      console.log('🛑 Agent background scheduler disabled by default (AGENTS_ENABLED is false/unset). Local agent runtime remains idle.');
+    }
   });
 } else if (process.env.VERCEL && process.env.NODE_ENV !== 'test') {
   initDatabase().catch(err => console.error('Vercel DB Init Error:', err));

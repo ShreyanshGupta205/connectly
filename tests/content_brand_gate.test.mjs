@@ -1,6 +1,6 @@
-process.env.VERCEL = '1';
+delete process.env.VERCEL;
 process.env.NODE_ENV = 'test';
-import { test, describe, beforeEach, after } from 'node:test';
+import { test, describe, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
@@ -18,58 +18,25 @@ import {
 import { processAgentQueueOnce } from '../server/services/agentWorker.mjs';
 import { enqueueTask, listTasks, clearMemoryQueue } from '../server/services/agentQueue.mjs';
 import { setKillSwitch } from '../server/services/killSwitch.mjs';
+import { createTestClient } from './testServer.mjs';
 
 const { default: app, pool } = await import('../server/index.mjs');
 
-// Minimal in-memory request simulator
-async function simulatedRequest(app, method, url, body = null, headers = {}) {
-  return new Promise((resolve) => {
-    const req = {
-      method,
-      url,
-      headers: { 'content-type': 'application/json', ...headers },
-      body,
-    };
-
-    let statusCode = 200;
-    let responseHeaders = {};
-
-    const res = {
-      status(code) {
-        statusCode = code;
-        return this;
-      },
-      setHeader(name, value) {
-        responseHeaders[name.toLowerCase()] = value;
-        return this;
-      },
-      json(data) {
-        resolve({
-          status: statusCode,
-          headers: responseHeaders,
-          body: data
-        });
-      },
-      send(data) {
-        resolve({
-          status: statusCode,
-          headers: responseHeaders,
-          body: data
-        });
-      }
-    };
-
-    app.handle(req, res);
-  });
-}
-
 describe('PR #3: Content Agent + Fact-Check / Brand Gate (Act & Review loop)', () => {
+  let client;
+
+  before(async () => {
+    client = await createTestClient(app);
+  });
   beforeEach(async () => {
     clearMemoryQueue();
     await setKillSwitch(null, false, 'Reset for testing');
   });
 
   after(async () => {
+    if (client) {
+      await client.close();
+    }
     if (pool) {
       await pool.end();
     }
@@ -205,7 +172,7 @@ describe('PR #3: Content Agent + Fact-Check / Brand Gate (Act & Review loop)', (
   });
 
   test('HTTP API: POST /api/agent/content/draft generates 3 hooks', async () => {
-    const res = await simulatedRequest(app, 'POST', '/api/agent/content/draft', {
+    const res = await client.request('POST', '/api/agent/content/draft', {
       platform: 'x',
       topic: 'Developer links'
     });
@@ -215,7 +182,7 @@ describe('PR #3: Content Agent + Fact-Check / Brand Gate (Act & Review loop)', (
   });
 
   test('HTTP API: POST /api/agent/brand-gate/validate checks policy violations', async () => {
-    const res = await simulatedRequest(app, 'POST', '/api/agent/brand-gate/validate', {
+    const res = await client.request('POST', '/api/agent/brand-gate/validate', {
       text: 'This revolutionary game-changer will disrupt the market.'
     });
     assert.equal(res.status, 200);

@@ -1,58 +1,40 @@
-process.env.VERCEL = '1';
+delete process.env.VERCEL;
 process.env.NODE_ENV = 'test';
-import { test, describe } from 'node:test';
+import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { createTestClient } from './testServer.mjs';
 
 const { default: app } = await import('../server/index.mjs');
 
-// Minimal in-memory request simulator
-async function simulatedRequest(app, method, url, body = null, headers = {}) {
-  return new Promise((resolve) => {
-    const req = {
-      method,
-      url,
-      headers: { 'content-type': 'application/json', ...headers },
-      body,
-    };
-
-    let statusCode = 200;
-    let responseHeaders = {};
-    let responseBody = '';
-
-    const res = {
-      status(code) {
-        statusCode = code;
-        return this;
-      },
-      setHeader(name, value) {
-        responseHeaders[name.toLowerCase()] = value;
-        return this;
-      },
-      json(data) {
-        responseBody = JSON.stringify(data);
-        resolve({
-          status: statusCode,
-          headers: responseHeaders,
-          body: data
-        });
-      },
-      send(data) {
-        responseBody = data;
-        resolve({
-          status: statusCode,
-          headers: responseHeaders,
-          body: data
-        });
-      }
-    };
-
-    app.handle(req, res);
-  });
-}
-
 describe('AI Mission Control & Growth Engine Endpoints', () => {
-  test('GET /api/ai/system returns 200 with system telemetry structure', async () => {
-    const res = await simulatedRequest(app, 'GET', '/api/ai/system');
+  let client;
+
+  before(async () => {
+    client = await createTestClient(app);
+  });
+
+  after(async () => {
+    if (client) await client.close();
+  });
+
+  test('GET /api/ai/system returns 404 when process.env.VERCEL is set', async () => {
+    process.env.VERCEL = '1';
+    const res = await client.request('GET', '/api/ai/system');
+    assert.equal(res.status, 404);
+    assert.equal(res.body.success, false);
+    delete process.env.VERCEL;
+  });
+
+  test('GET /api/ai/system returns 401 when x-admin-key is missing', async () => {
+    delete process.env.VERCEL;
+    const res = await client.request('GET', '/api/ai/system', null, { 'x-admin-key': '' });
+    assert.equal(res.status, 401);
+    assert.equal(res.body.success, false);
+  });
+
+  test('GET /api/ai/system returns 200 with system telemetry structure with admin key', async () => {
+    delete process.env.VERCEL;
+    const res = await client.request('GET', '/api/ai/system');
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
     assert.ok(res.body.ollama !== undefined);
@@ -63,7 +45,8 @@ describe('AI Mission Control & Growth Engine Endpoints', () => {
   });
 
   test('GET /api/ai/queue returns staged drafts from pending.md', async () => {
-    const res = await simulatedRequest(app, 'GET', '/api/ai/queue');
+    delete process.env.VERCEL;
+    const res = await client.request('GET', '/api/ai/queue');
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
     assert.ok(Array.isArray(res.body.drafts));
@@ -72,7 +55,8 @@ describe('AI Mission Control & Growth Engine Endpoints', () => {
   });
 
   test('GET /api/ai/funnel returns activation funnel and progress toward 30', async () => {
-    const res = await simulatedRequest(app, 'GET', '/api/ai/funnel');
+    delete process.env.VERCEL;
+    const res = await client.request('GET', '/api/ai/funnel');
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
     assert.equal(res.body.goal.target, 30);
@@ -81,7 +65,8 @@ describe('AI Mission Control & Growth Engine Endpoints', () => {
   });
 
   test('POST /api/ai/queue/update rejects missing required fields', async () => {
-    const res = await simulatedRequest(app, 'POST', '/api/ai/queue/update', {});
+    delete process.env.VERCEL;
+    const res = await client.request('POST', '/api/ai/queue/update', {});
     assert.equal(res.status, 400);
     assert.equal(res.body.success, false);
   });

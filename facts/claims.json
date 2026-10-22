@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "version": "1.0.0",
+  "description": "Ground truth verified claims registry for Connectly Autonomous Agent System. Any claim made in generated content, outreach drafts, or marketing copy must be strictly substantiated by this file.",
+  "verified_claims": [
+    {
+      "id": "claim_hackathon_rank",
+      "claim": "Shreyansh Gupta ranked among the top 0.6% in Google for Developers hackathon",
+      "category": "credential",
+      "file_line": "src/data/initialProfiles.ts:40",
+      "status": "verified",
+      "evidence": "Times of India verified article: iit-madras-student-ranks-among-top-0-6-in-google-for-developers-hackathon"
+    },
+    {
+      "id": "claim_education_iit_madras",
+      "claim": "Founder Shreyansh Gupta is an IIT Madras student building AI applications",
+      "category": "credential",
+      "file_line": "src/data/initialProfiles.ts:7",
+      "status": "verified",
+      "evidence": "Verified profile bio and Times of India education feature"
+    },
+    {
+      "id": "claim_mit_license",
+      "claim": "Connectly is 100% open-source software released under the MIT License",
+      "category": "license",
+      "file_line": "package.json:6",
+      "status": "verified",
+      "evidence": "package.json license field specifies MIT"
+    },
+    {
+      "id": "claim_printable_poster",
+      "claim": "Connectly provides a 1-click printable poster with high-resolution QR code for hackathon booths and demo tables",
+      "category": "feature",
+      "file_line": "src/components/poster/PrintablePoster.tsx:1",
+      "status": "verified",
+      "evidence": "PrintablePoster component implements A4, Minimal, and Badge layouts with SVG QR code rendering"
+    },
+    {
+      "id": "claim_vcard_download",
+      "claim": "Connectly allows instant 1-tap download of vCard (.vcf) address book contact files",
+      "category": "feature",
+      "file_line": "src/components/profile/PublicProfileView.tsx:140",
+      "status": "verified",
+      "evidence": "vCard download trigger generates RFC standard VCARD 3.0 data blob in browser"
+    },
+    {
+      "id": "claim_click_tracking",
+      "claim": "Connectly tracks aggregate click counts on individual links in real time",
+      "category": "feature",
+      "file_line": "server/index.mjs:710",
+      "status": "verified",
+      "evidence": "POST /api/profiles/:username/click endpoint increments link-level click counters"
+    },
+    {
+      "id": "claim_opengraph_bot_support",
+      "claim": "Connectly serves server-rendered dynamic Open Graph meta tags to crawler bots for rich unfurls on Twitter, LinkedIn, and WhatsApp",
+      "category": "feature",
+      "file_line": "api/og.mjs:1",
+      "status": "verified",
+      "evidence": "api/og.mjs detects bot User-Agents and outputs valid HTML OpenGraph tags"
+    },
+    {
+      "id": "claim_vanity_handles",
+      "claim": "Connectly provides clean path-based vanity profiles with /@handle without hash fragments",
+      "category": "feature",
+      "file_line": "src/utils/router.ts:86",
+      "status": "verified",
+      "evidence": "router.ts parses canonical /@username paths and automatically redirects legacy /#/@ routes"
+    },
+    {
+      "id": "claim_local_ollama_ai",
+      "claim": "Connectly local agent runtime utilizes self-hosted Ollama models with zero paid API tokens and zero external telemetry",
+      "category": "architecture",
+      "file_line": "server/index.mjs:1050",
+      "status": "verified",
+      "evidence": "Local endpoint communicates with 127.0.0.1:11434 via ollama API"
+    },
+    {
+      "id": "claim_zero_trackers",
+      "claim": "Connectly public profiles do not use third-party advertising tracking cookies or ad network beacons",
+      "category": "privacy",
+      "file_line": "src/components/legal/PrivacyPolicyView.tsx:1",
+      "status": "verified",
+      "evidence": "Privacy policy documents zero ad beacons and transparent localStorage usage"
+    }
+  ],
+  "prohibited_terms": [
+    {
+      "term": "verified badge",
+      "reason": "Must not be claimed in outreach or promotional content to avoid misleading users into expecting institutional verification."
+    },
+    {
+      "term": "zero-PII",
+      "reason": "Technically misleading as user email and username are necessary account identifiers."
+    },
+    {
+      "term": "300 DPI",
+      "reason": "Vector SVG and CSS prints are resolution-independent; claiming 300 DPI is a raster-specific fabrication."
+    },
+    {
+      "term": "RFC",
+      "reason": "Connectly is not an IETF RFC standard specification."
+    },
+    {
+      "term": "Playwright",
+      "reason": "Playwright is an internal test development tool, not an in-product user feature."
+    },
+    {
+      "term": "Connectly.ai",
+      "reason": "Connectly is an independent open-source project (connectly.bio). It is not affiliated with Connectly.ai."
+    },
+    {
+      "term": "judges spend 90 seconds",
+      "reason": "Unsubstantiated statistic without empirical citation."
+    },
+    {
+      "term": "double your email list",
+      "reason": "Unsubstantiated marketing claim / income-result promise."
+    },
+    {
+      "term": "saw what you built",
+      "reason": "Prohibited cold-outreach pretense claiming personal knowledge of recipient projects."
+    },
+    {
+      "term": "saw your project",
+      "reason": "Prohibited cold-outreach pretense claiming personal knowledge of recipient projects."
+    },
+    {
+      "term": "I saw your",
+      "reason": "Prohibited cold-outreach pretense."
+    },
+    {
+      "term": "guaranteed",
+      "reason": "No conversion, engagement, or ranking guarantees may be claimed."
+    },
+    {
+      "term": "100% conversion",
+      "reason": "Fabricated metric."
+    },
+    {
+      "term": "Fortune 500",
+      "reason": "Unsubstantiated enterprise claim."
+    },
+    {
+      "term": "#1 on Product Hunt",
+      "reason": "Unsubstantiated ranking claim."
+    }
+  ]
+}

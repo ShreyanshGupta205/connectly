@@ -2,17 +2,26 @@
  * Fact-Check / Brand Gate Agent
  * Strict verification gatekeeper protecting brand reputation and factual truth.
  *
- * Rules:
- * 1. ZERO Hallucinated Features: Rejects paid tiers, AI video generation, or fake claims.
- * 2. ZERO Corporate Buzzwords: Rejects "game-changer", "revolutionary", "supercharge your 10x".
- * 3. Enforces Technical Authenticity: Requires real developer features (QR studio, poster, click stats).
- * 4. Self-Improvement Loop: Every rejection automatically records a negative learning into `learnings`.
- * 5. Approved drafts are staged for founder review; NEVER posted autonomously to external APIs.
+ * STEP 5 HARD CONSTRAINTS:
+ * 1. Deterministic first: Script verdict ALWAYS wins; LLM is a second opinion only.
+ * 2. Grounded strictly in facts/claims.json:
+ *    - Reject any number, credential, feature, or testimonial not in claims.json.
+ *    - Block "verified badge", "zero-PII", "300 DPI", "RFC", Playwright-in-product claims, and Connectly.ai confusion.
+ *    - Block trap claims like "judges spend 90 seconds" and "double your email list".
+ * 3. Self-Improvement Loop: Rejections record negative learnings into `learnings` table.
+ * 4. Staged for approval: NEVER auto-posted externally.
  */
 
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { completeTask, failTask } from '../services/agentQueue.mjs';
+import { validateTextAgainstClaims, loadClaimsRegistry } from '../services/claimsValidator.mjs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DEFAULT_QUEUE_DIR = process.env.AGENT_QUEUE_DIR || path.resolve(__dirname, '../../agent-setup/queue');
+const PENDING_QUEUE_FILE = path.join(DEFAULT_QUEUE_DIR, 'pending.md');
 
 export const FORBIDDEN_BUZZWORDS = [
   'game-changer',
@@ -24,7 +33,8 @@ export const FORBIDDEN_BUZZWORDS = [
   'unlock your true potential',
   'skyrocket',
   'magic bullet',
-  'growth hack your'
+  'growth hack your',
+  'double your'
 ];
 
 export const HALLUCINATED_CLAIMS = [
@@ -35,7 +45,13 @@ export const HALLUCINATED_CLAIMS = [
   'ai video avatar',
   'ai resume rewriter',
   'token airdrop',
-  'crypto payment'
+  'crypto payment',
+  'series a',
+  'y combinator',
+  'fortune 500',
+  'soc 2',
+  'iso 27001',
+  'hipaa compliant'
 ];
 
 export const VALID_CONNECTLY_FEATURES = [
@@ -44,53 +60,64 @@ export const VALID_CONNECTLY_FEATURES = [
   'qr code',
   'click tracking',
   'poster',
-  'badge',
-  'verified',
-  'views',
   'hackathon',
-  'profile'
+  'profile',
+  'vcard',
+  'mit license',
+  'vanity'
 ];
 
 /**
- * Validate draft text against Brand Gate policies
+ * Validate draft text deterministically against Brand Gate policies and facts/claims.json
+ * @param {string} text
+ * @returns {{ passed: boolean, violations: string[], checks: object }}
  */
 export function validateContentCopy(text = '') {
-  const lower = text.toLowerCase();
   const violations = [];
+  const lower = text.toLowerCase();
 
-  // Check 1: Forbidden Buzzwords
+  // 1. Deterministic Claims & Prohibited Terms Validator (facts/claims.json)
+  const claimsAudit = validateTextAgainstClaims(text);
+  if (!claimsAudit.valid) {
+    violations.push(...claimsAudit.violations);
+  }
+
+  // 2. Forbidden Buzzwords
   for (const buzz of FORBIDDEN_BUZZWORDS) {
     if (lower.includes(buzz)) {
       violations.push(`Forbidden buzzword: "${buzz}"`);
     }
   }
 
-  // Check 2: Hallucinated Claims
+  // 3. Hallucinated Claims
   for (const fake of HALLUCINATED_CLAIMS) {
     if (lower.includes(fake)) {
-      violations.push(`Hallucinated claim: "${fake}" (Connectly is free & open-source; does not have paid tiers or AI resumes)`);
+      violations.push(`Hallucinated claim: "${fake}" (Connectly is free & open-source; does not have paid tiers, enterprise certifications, or crypto)`);
     }
   }
 
-  // Check 3: Real Feature Presence
+  // 4. Real Feature Presence (must mention at least one verified feature)
   const mentionsRealFeature = VALID_CONNECTLY_FEATURES.some(f => lower.includes(f));
   if (!mentionsRealFeature) {
-    violations.push('Missing real Connectly features (must mention bio-link, QR codes, printable posters, click stats, or open-source)');
+    violations.push('Missing real Connectly features (must mention bio-link, QR codes, printable posters, click tracking, vCard, or open-source)');
   }
 
-  // Check 4: Length and Structure
+  // 5. Length and Structure
   if (text.trim().length < 20) {
     violations.push('Draft is too short or empty to evaluate.');
   }
 
-  const passed = violations.length === 0;
+  // Deduplicate violations
+  const uniqueViolations = Array.from(new Set(violations));
+  const passed = uniqueViolations.length === 0;
 
   return {
     passed,
-    violations,
+    violations: uniqueViolations,
     checks: {
-      noSpamBuzzwords: !violations.some(v => v.includes('Forbidden buzzword')),
-      noHallucinations: !violations.some(v => v.includes('Hallucinated claim')),
+      claimsValid: claimsAudit.valid,
+      noSpamBuzzwords: !uniqueViolations.some(v => v.includes('Forbidden buzzword')),
+      noHallucinations: !uniqueViolations.some(v => v.includes('Hallucinated claim') || v.includes('Deterministic rule violation')),
       hasRealFeatures: mentionsRealFeature,
       hasValidStructure: text.trim().length >= 20
     }
@@ -121,19 +148,21 @@ export function extractTextFromDraft(draftContent) {
 }
 
 /**
- * Execute Brand Gate evaluation on an enqueued review task
+ * Execute Brand Gate evaluation on an enqueued review task.
+ * DETERMINISTIC FIRST: Script verdict strictly decides pass/fail.
  */
 export async function executeBrandGateReview(pool, task) {
   const { draftId, platform = 'x', topic, draftContent, bottleneckTarget } = task.input || {};
   const evaluatableText = extractTextFromDraft(draftContent);
 
+  // 1. Primary Deterministic Validation
   const evaluation = validateContentCopy(evaluatableText);
 
   // ── REJECTION PATH ──
   if (!evaluation.passed) {
     const reason = `Brand Gate Rejected: ${evaluation.violations.join('; ')}`;
 
-    // Record Negative Learning into learnings table for self-improvement
+    // Record Negative Learning into learnings table for prompt self-improvement
     if (pool) {
       try {
         const learningId = 'learn_' + Date.now();
@@ -162,6 +191,7 @@ export async function executeBrandGateReview(pool, task) {
     return {
       draftId,
       verdict: 'rejected',
+      scriptVerdictWins: true,
       checks: evaluation.checks,
       violations: evaluation.violations,
       reason,
@@ -170,7 +200,7 @@ export async function executeBrandGateReview(pool, task) {
     };
   }
 
-  // ── APPROVAL PATH ──
+  // ── APPROVAL PATH (DETERMINISTIC VERDICT PASS) ──
   const postId = 'post_' + Date.now();
 
   // Stage draft into post_performance table for downstream attribution
@@ -200,45 +230,45 @@ export async function executeBrandGateReview(pool, task) {
     }
   }
 
-  // Also stage into pending.md so the founder can approve it in Mission Control
+  // Stage draft into agent-setup/queue/pending.md for founder manual review
   try {
-    const pendingPath = path.join(process.cwd(), 'docs', 'growth', 'pending.md');
-    if (fs.existsSync(pendingPath)) {
-      const pendingContent = fs.readFileSync(pendingPath, 'utf8');
-      const hookText = Array.isArray(draftContent.hooks) && draftContent.hooks.length > 0
-        ? draftContent.hooks[0].text
-        : 'Connectly builder launch';
-
-      const entry = `\n### Draft ${postId} (${platform.toUpperCase()} - Staged by Autonomous Agent Team)
-- **Platform**: ${platform.toUpperCase()}
-- **Status**: pending_approval
-- **Topic**: ${topic || 'Connectly Builder Growth'}
-- **Gatekeeper Status**: ✅ Verified by Brand Gate (Zero hallucinations, practitioner voice)
-- **Hook**: "${hookText}"
-- **Body**:
-${draftContent.body || evaluatableText}
-- **CTA**: ${draftContent.cta || 'connectly.bio'}
-`;
-      fs.appendFileSync(pendingPath, entry, 'utf8');
+    if (!fs.existsSync(DEFAULT_QUEUE_DIR)) {
+      fs.mkdirSync(DEFAULT_QUEUE_DIR, { recursive: true });
     }
+
+    let existingContent = '';
+    if (fs.existsSync(PENDING_QUEUE_FILE)) {
+      existingContent = fs.readFileSync(PENDING_QUEUE_FILE, 'utf-8');
+    }
+
+    const draftMatches = existingContent.match(/###\s*\[DRAFT\s*(\d+)\]/gi) || [];
+    const nextDraftNumber = draftMatches.length + 1;
+
+    const stagedBlock = `\n### [DRAFT ${nextDraftNumber}] - ${platform.toUpperCase()} (${topic || 'Builder Activation'})\n` +
+      `- **Agent**: Content Writer (Staged via Brand Gate)\n` +
+      `- **Platform**: ${platform.toUpperCase()}\n` +
+      `- **Target**: ${bottleneckTarget || 'Builder Activation'}\n` +
+      `- **Status**: ⏳ PENDING FOUNDER APPROVAL\n` +
+      `- **Generated**: ${new Date().toISOString()}\n\n` +
+      `\`\`\`markdown\n${evaluatableText}\n\`\`\`\n\n---\n`;
+
+    fs.appendFileSync(PENDING_QUEUE_FILE, stagedBlock, 'utf-8');
   } catch (fsErr) {
-    console.warn('[BrandGate] Failed to append to pending.md:', fsErr.message);
+    console.warn('[BrandGate] Staging to queue warning:', fsErr.message);
   }
 
   await completeTask(pool, task.id, {
-    draftId,
-    verdict: 'approved',
+    status: 'approved_and_staged',
     postId,
-    stagedInQueue: true,
-    checks: evaluation.checks
+    stagedInPendingQueue: true
   });
 
   return {
     draftId,
     verdict: 'approved',
+    scriptVerdictWins: true,
     checks: evaluation.checks,
-    violations: [],
-    reason: 'Verified by Brand Gate: Zero hallucinations, accurate features, practitioner voice.',
+    violations: evaluation.violations,
     stagedInQueue: true,
     stagedPostId: postId
   };

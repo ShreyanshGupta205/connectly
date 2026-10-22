@@ -1,5 +1,12 @@
 -- =====================================================================
--- Connectly: Autonomous Multi-Agent Growth Framework Schema (PR #1)
+-- Connectly: Autonomous Multi-Agent Growth Framework Schema (PR #1 + Round 10)
+-- Target Database: AGENT_DATABASE_URL (Isolated local/agent database)
+--
+-- HARD SAFETY RULE:
+-- This migration MUST NOT be executed against production Supabase.
+-- It is designed for the isolated local agent database.
+-- If executed against any Supabase host, Row Level Security and privilege
+-- revocations ensure that all public / authenticated roles have ZERO access.
 --
 -- Tables:
 --   1. tasks: Distributed asynchronous task queue for agent collaboration
@@ -9,6 +16,9 @@
 --   5. post_performance: Attribution link connecting published copy to real metrics
 --   6. prompt_versions: System prompt versions with benchmark scores & auto-rollback
 --   7. agent_settings: Global controls (emergency kill switch, rate limits)
+--   8. leads: Staged outreach leads from manual CSV/paste only (zero scraping)
+--   9. feedback: Founder feedback on agent copy (approve/edit/reject + reason tags)
+--  10. outcomes: Ingested post conversion metrics & attribution
 -- =====================================================================
 
 -- 1. Tasks Queue Table
@@ -127,9 +137,118 @@ CREATE TABLE IF NOT EXISTS agent_settings (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Seed Initial System Settings (Kill Switch = false, Rate limits)
+-- Seed Initial System Settings
 INSERT INTO agent_settings (key, value, updated_at)
 VALUES 
   ('kill_switch', '{"is_paused": false, "reason": null, "paused_at": null}'::jsonb, NOW()),
-  ('rate_limits', '{"max_daily_tasks": 100, "max_concurrent_runs": 2, "cost_ceiling_cents": 500}'::jsonb, NOW())
+  ('rate_limits', '{"max_daily_tasks": 100, "max_concurrent_runs": 1, "cost_ceiling_cents": 500}'::jsonb, NOW())
 ON CONFLICT (key) DO NOTHING;
+
+-- 8. Staged Outreach Leads Table (Manual CSV/Paste Only - Zero Web Scraping)
+CREATE TABLE IF NOT EXISTS leads (
+  id TEXT PRIMARY KEY,
+  source TEXT NOT NULL DEFAULT 'manual_csv',
+  contact_handle TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  context_notes TEXT,
+  outreach_status TEXT NOT NULL DEFAULT 'staged', -- 'staged', 'approved', 'rejected', 'sent'
+  invite_draft TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 days')
+);
+
+CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(outreach_status, created_at DESC);
+
+-- 9. Founder Feedback Loop Table (RLHF / Memory Ingestion)
+CREATE TABLE IF NOT EXISTS feedback (
+  id TEXT PRIMARY KEY,
+  action TEXT NOT NULL, -- 'approved', 'edited', 'rejected'
+  reason_tag TEXT NOT NULL, -- 'too_hyped', 'factual_error', 'tone_mismatch', 'excellent', etc.
+  draft_text TEXT NOT NULL,
+  final_text TEXT,
+  platform TEXT NOT NULL,
+  agent TEXT NOT NULL DEFAULT 'content',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at DESC);
+
+-- 10. Post Outcomes & Attribution Ingestion
+CREATE TABLE IF NOT EXISTS outcomes (
+  id TEXT PRIMARY KEY,
+  post_id TEXT,
+  platform TEXT NOT NULL,
+  impressions INT NOT NULL DEFAULT 0,
+  clicks INT NOT NULL DEFAULT 0,
+  signups INT NOT NULL DEFAULT 0,
+  activations INT NOT NULL DEFAULT 0,
+  source_tag TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_outcomes_created ON outcomes(created_at DESC);
+
+-- =====================================================================
+-- ROW LEVEL SECURITY (RLS) & PRIVILEGE LOCKDOWN
+-- Enforce RLS with ZERO permissive policies.
+-- Revoke all table access from anon, authenticated, and PUBLIC.
+-- =====================================================================
+
+DO $$
+DECLARE
+  t text;
+  tables text[] := ARRAY[
+    'tasks',
+    'agent_runs',
+    'learnings',
+    'experiments',
+    'post_performance',
+    'prompt_versions',
+    'agent_settings',
+    'leads',
+    'feedback',
+    'outcomes'
+  ];
+BEGIN
+  FOREACH t IN ARRAY tables LOOP
+    EXECUTE format('ALTER TABLE IF EXISTS %I ENABLE ROW LEVEL SECURITY;', t);
+    EXECUTE format('REVOKE ALL ON TABLE %I FROM anon, authenticated, PUBLIC;', t);
+  END LOOP;
+END $$;
+
+-- =====================================================================
+-- VERIFICATION SQL BLOCK (FOR USER / FOUNDER MANUAL AUDIT)
+-- Run the following block as the 'anon' role.
+-- Every statement MUST fail with permission denied (SQLSTATE 42501).
+-- =====================================================================
+/*
+SET ROLE anon;
+
+-- Test 1: Must fail
+SELECT * FROM tasks LIMIT 1;
+-- Expected: ERROR: permission denied for table tasks
+
+-- Test 2: Must fail
+SELECT * FROM agent_runs LIMIT 1;
+-- Expected: ERROR: permission denied for table agent_runs
+
+-- Test 3: Must fail
+SELECT * FROM learnings LIMIT 1;
+-- Expected: ERROR: permission denied for table learnings
+
+-- Test 4: Must fail
+SELECT * FROM experiments LIMIT 1;
+-- Expected: ERROR: permission denied for table experiments
+
+-- Test 5: Must fail
+SELECT * FROM leads LIMIT 1;
+-- Expected: ERROR: permission denied for table leads
+
+-- Test 6: Must fail
+SELECT * FROM feedback LIMIT 1;
+-- Expected: ERROR: permission denied for table feedback
+
+-- Reset role
+RESET ROLE;
+*/
