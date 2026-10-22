@@ -11,6 +11,7 @@ import { ShareModal } from './components/profile/ShareModal';
 import { QRModal } from './components/profile/QRModal';
 import { CommandPalette } from './components/common/CommandPalette';
 import { AdminPanel } from './components/admin/AdminPanel';
+import { PrivacyPolicyView } from './components/legal/PrivacyPolicyView';
 import { 
   parseRoute, 
   pathToRoute, 
@@ -128,6 +129,10 @@ const AppContent: React.FC = () => {
 
         {currentRoute === 'admin' && (
           <AdminPanel navigateTo={navigateTo} />
+        )}
+
+        {currentRoute === 'privacy' && (
+          <PrivacyPolicyView navigateTo={navigateTo} />
         )}
 
         {isPublicProfile && (

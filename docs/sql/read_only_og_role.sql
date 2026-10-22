@@ -28,7 +28,7 @@
 -- INSTRUCTIONS FOR FOUNDER:
 -- Review this script. Do NOT commit real passwords to git.
 -- Execute manually in Supabase SQL Editor:
--- https://supabase.com/dashboard/project/rbmcfsuupcojncyqmywm/sql/new
+-- https://supabase.com/dashboard/project/<project-ref>/sql/new
 -- (Zero live DB access rule: This script is reviewed and executed manually by the founder).
 -- =====================================================================
 

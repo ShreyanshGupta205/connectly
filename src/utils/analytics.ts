@@ -104,16 +104,28 @@ const vercelAdapter: AnalyticsAdapter = {
 };
 
 /**
+ * Helper to check whether PostHog is legitimately configured with a non-empty, non-placeholder API key.
+ */
+export function isPostHogConfigured(): boolean {
+  if (typeof import.meta === 'undefined' || !import.meta.env) return false;
+  const apiKey = import.meta.env.VITE_POSTHOG_API_KEY;
+  if (!apiKey || typeof apiKey !== 'string') return false;
+  const trimmed = apiKey.trim();
+  if (!trimmed || trimmed === 'phc_your_key_here' || trimmed === 'your-api-key') return false;
+  return true;
+}
+
+/**
  * PostHog Adapter (Recommended Free Tier: 1,000,000 events/month free, no server required)
- * Keyed via VITE_POSTHOG_API_KEY and VITE_POSTHOG_HOST. No-op when unset.
+ * Keyed via VITE_POSTHOG_API_KEY and VITE_POSTHOG_HOST. Strict no-op when unset.
  */
 const posthogAdapter: AnalyticsAdapter = {
   name: 'PostHog',
   track: (eventName, properties) => {
     try {
-      const apiKey = typeof import.meta !== 'undefined' ? import.meta.env.VITE_POSTHOG_API_KEY : null;
-      if (!apiKey || typeof window === 'undefined') return;
+      if (!isPostHogConfigured() || typeof window === 'undefined') return;
 
+      const apiKey = (import.meta.env.VITE_POSTHOG_API_KEY as string).trim();
       const host = (import.meta.env.VITE_POSTHOG_HOST || 'https://us.i.posthog.com').replace(/\/+$/, '');
       const distinctId = getAnonymousDistinctId();
 

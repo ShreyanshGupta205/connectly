@@ -12,10 +12,11 @@ app.use(cors());
 app.use(express.json());
 
 // ── Database Configuration ──
-const connectionString = process.env.DATABASE_URL || 
-  'postgresql://postgres.rbmcfsuupcojncyqmywm:Connectly%402026@aws-0-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true';
+// Least-Privilege & Secrets Hygiene: Read strictly from environment variable DATABASE_URL.
+// Never hardcode database credentials or live project refs in server code.
+const connectionString = process.env.DATABASE_URL || '';
 
-const pool = new pg.Pool({
+const pool = connectionString ? new pg.Pool({
   connectionString,
   ssl: {
     rejectUnauthorized: false,
@@ -23,7 +24,7 @@ const pool = new pg.Pool({
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
-});
+}) : null;
 
 // Clean Production Profiles (Only verified root production account)
 let memoryProfiles = {
@@ -60,9 +61,13 @@ let isPostgresReady = false;
 
 // ── Initialize Database Tables & Production Clean State ──
 async function initDatabase() {
+  if (!pool) {
+    console.log('ℹ️ Running in memory-store mode (DATABASE_URL not configured).');
+    return;
+  }
   try {
     const client = await pool.connect();
-    console.log('✅ Connected to Supabase PostgreSQL Pooler (aws-0-ap-south-1)');
+    console.log('✅ Connected to PostgreSQL Database');
     isPostgresReady = true;
 
     // 1. Create Profiles Table
@@ -235,18 +240,20 @@ async function syncProfileToPostgres(profile) {
 // 1. Health & Database Status Check
 app.get('/api/health', async (req, res) => {
   const start = Date.now();
-  let dbStatus = 'healthy';
+  let dbStatus = isPostgresReady ? 'connected' : 'in_memory_mode';
   let latency = 0;
   let dbProfileCount = Object.keys(memoryProfiles).length;
 
-  try {
-    const dbRes = await pool.query('SELECT NOW(), count(*) FROM profiles;');
-    latency = Date.now() - start;
-    dbProfileCount = parseInt(dbRes.rows[0].count, 10);
-    dbStatus = 'connected';
-  } catch (err) {
-    dbStatus = 'degraded_memory_fallback';
-    latency = Date.now() - start;
+  if (pool && isPostgresReady) {
+    try {
+      const dbRes = await pool.query('SELECT NOW(), count(*) FROM profiles;');
+      latency = Date.now() - start;
+      dbProfileCount = parseInt(dbRes.rows[0].count, 10);
+      dbStatus = 'connected';
+    } catch (err) {
+      dbStatus = 'degraded_memory_fallback';
+      latency = Date.now() - start;
+    }
   }
 
   res.json({
@@ -254,8 +261,8 @@ app.get('/api/health', async (req, res) => {
     environment: 'production',
     timestamp: new Date().toISOString(),
     database: {
-      provider: 'Supabase PostgreSQL (AWS South Asia)',
-      poolerHost: 'aws-0-ap-south-1.pooler.supabase.com:6543',
+      provider: pool ? 'Supabase PostgreSQL' : 'Local Memory Store',
+      poolerHost: connectionString ? (connectionString.match(/@([^/:]+)/)?.[1] || 'Configured') : 'Not Configured',
       status: dbStatus,
       latencyMs: latency,
       totalProfiles: dbProfileCount,
@@ -315,15 +322,148 @@ app.get('/api/profiles/:username', (req, res) => {
   res.json({ success: true, profile });
 });
 
+// ── Server-Side Profile Write Security & Field Whitelist ──
+// Clients are strictly prohibited from mutating security-sensitive fields:
+// - is_verified / isVerified: Can ONLY be modified by administrators via /api/admin/verify.
+// - plan: Can ONLY be modified via billing / Stripe webhooks or admin override.
+// - email: Managed via verified auth providers; immutable via public profile update.
+// - id: System-generated immutable primary key.
+// - created_at / createdAt: Immutable creation timestamp.
+// - stats: Cannot be forged by arbitrary client update payloads (views/likes/shares/qrScans
+//   must be incremented atomically through dedicated server endpoints or analytics events).
+
+const RESTRICTED_PROFILE_FIELDS = [
+  'isVerified', 'is_verified',
+  'plan',
+  'email',
+  'id',
+  'createdAt', 'created_at',
+  'stats'
+];
+
+const WHITELISTED_UPDATE_FIELDS = [
+  'name',
+  'tagline',
+  'bio',
+  'avatarUrl', 'avatar_url',
+  'coverUrl', 'cover_url',
+  'themeId', 'theme_id',
+  'location',
+  'category',
+  'skills',
+  'links',
+  'qrSettings', 'qr_settings'
+];
+
+function filterWhitelistedFields(body) {
+  const allowed = {};
+  for (const field of WHITELISTED_UPDATE_FIELDS) {
+    if (body[field] !== undefined) {
+      if (field === 'avatar_url') allowed.avatarUrl = body[field];
+      else if (field === 'cover_url') allowed.coverUrl = body[field];
+      else if (field === 'theme_id') allowed.themeId = body[field];
+      else if (field === 'qr_settings') allowed.qrSettings = body[field];
+      else allowed[field] = body[field];
+    }
+  }
+  return allowed;
+}
+
+// ── Server-Side Rate Limiter for Public Actions ──
+const rateLimitMap = new Map();
+function rateLimit(windowMs, maxRequests) {
+  return (req, res, next) => {
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';
+    const key = `${req.path}:${ip}`;
+    const now = Date.now();
+    const record = rateLimitMap.get(key) || { count: 0, resetTime: now + windowMs };
+
+    if (now > record.resetTime) {
+      record.count = 1;
+      record.resetTime = now + windowMs;
+    } else {
+      record.count++;
+    }
+
+    rateLimitMap.set(key, record);
+
+    if (record.count > maxRequests) {
+      return res.status(429).json({ 
+        success: false, 
+        error: 'Too Many Requests: Rate limit exceeded. Please wait a moment.' 
+      });
+    }
+    next();
+  };
+}
+
+const publicActionLimiter = rateLimit(60000, 60); // 60 requests per minute per IP
+
+// ── Server-Side Ownership & Admin Verification ──
+function verifyProfileOwnership(req, profile) {
+  const configuredAdminSecret = process.env.ADMIN_SECRET_KEY || 'connectly_admin_fallback_key';
+  const authHeader = req.headers['authorization'];
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const adminKey = req.headers['x-admin-key'] || (bearerToken === configuredAdminSecret ? bearerToken : null);
+
+  // 1. Admin authorization override
+  if (adminKey && adminKey === configuredAdminSecret) {
+    return { authorized: true, role: 'admin' };
+  }
+
+  // 2. Caller identity verification
+  const callerId = req.headers['x-user-id'] || bearerToken;
+  const callerEmail = req.headers['x-user-email'];
+
+  if (!callerId && !callerEmail) {
+    return { 
+      authorized: false, 
+      status: 401, 
+      error: 'Unauthorized: Authentication credentials (x-user-id or x-user-email) required to modify profile.' 
+    };
+  }
+
+  const matchesId = callerId && (callerId === profile.id || callerId === profile.username);
+  const matchesEmail = callerEmail && profile.email && (callerEmail.toLowerCase() === profile.email.toLowerCase());
+
+  if (!matchesId && !matchesEmail) {
+    return { 
+      authorized: false, 
+      status: 403, 
+      error: `Forbidden: Caller is not authorized to modify profile @${profile.username}. Ownership verification failed.` 
+    };
+  }
+
+  return { authorized: true, role: 'owner' };
+}
+
+function verifyAdminCaller(req) {
+  const configuredAdminSecret = process.env.ADMIN_SECRET_KEY || 'connectly_admin_fallback_key';
+  const authHeader = req.headers['authorization'];
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const callerKey = req.headers['x-admin-key'] || bearerToken;
+
+  if (!callerKey || callerKey !== configuredAdminSecret) {
+    return { 
+      authorized: false, 
+      status: 401, 
+      error: 'Unauthorized: Valid administrative key required.' 
+    };
+  }
+  return { authorized: true };
+}
+
 // 4. Create New Profile
 app.post('/api/profiles', async (req, res) => {
-  const { username, name, email, tagline, bio, plan, category } = req.body;
+  const { username, name, email, tagline, bio, category } = req.body;
   const cleanUsername = (username || '').toLowerCase().trim().replace(/[^a-z0-9_]/g, '');
 
   if (!cleanUsername || memoryProfiles[cleanUsername]) {
     return res.status(400).json({ success: false, error: 'Username already taken or invalid' });
   }
 
+  // Server-enforced baseline for security-sensitive attributes:
+  // Clients CANNOT set isVerified, plan, stats, id, or createdAt
   const newProfile = {
     id: 'user-' + cleanUsername,
     username: cleanUsername,
@@ -332,16 +472,16 @@ app.post('/api/profiles', async (req, res) => {
     bio: bio || 'Welcome to my digital space. Check out my links below!',
     avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanUsername}`,
     coverUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&auto=format&fit=crop&q=80',
-    isVerified: false,
+    isVerified: false, // Server-enforced: only admin can verify
     themeId: 'aurora-glass',
-    plan: plan || 'free',
+    plan: 'free',       // Server-enforced: billing/admin only
     createdAt: new Date().toISOString(),
     email: email || `${cleanUsername}@example.com`,
     location: 'Global',
     category: category || 'Creator',
     skills: ['Creator', 'Builder'],
     stats: { views: 0, likes: 0, shares: 0, qrScans: 0 },
-    qrSettings: { fgColor: '#8b5cf6', bgColor: '#0d1117', includeAvatar: true, style: 'minimal', dotType: 'rounded', customText: `Scan to connect with ${name}` },
+    qrSettings: { fgColor: '#8b5cf6', bgColor: '#0d1117', includeAvatar: true, style: 'minimal', dotType: 'rounded', customText: `Scan to connect with ${name || cleanUsername}` },
     links: [
       { id: 'link-1', platform: 'website', title: 'My Portfolio / Blog', subtitle: 'Check out my recent works', url: 'https://example.com', position: 1, isVisible: true, clicks: 0 },
     ],
@@ -353,7 +493,7 @@ app.post('/api/profiles', async (req, res) => {
   res.status(201).json({ success: true, profile: newProfile });
 });
 
-// 5. Update Profile
+// 5. Update Profile (PUT - Ignores restricted fields)
 app.put('/api/profiles/:username', async (req, res) => {
   const { username } = req.params;
   const cleanUsername = username.toLowerCase();
@@ -363,10 +503,70 @@ app.put('/api/profiles/:username', async (req, res) => {
     return res.status(404).json({ success: false, error: 'Profile not found' });
   }
 
+  // Server-side ownership verification: Caller must own :username or provide admin credentials
+  const ownership = verifyProfileOwnership(req, existing);
+  if (!ownership.authorized) {
+    return res.status(ownership.status).json({ success: false, error: ownership.error });
+  }
+
+  // Whitelist extraction: restricted fields (is_verified, plan, email, id, created_at, stats) are completely ignored
+  const allowedUpdates = filterWhitelistedFields(req.body);
+
   const updated = {
     ...existing,
-    ...req.body,
-    username: cleanUsername, // Immutable handle
+    ...allowedUpdates,
+    username: cleanUsername,         // Immutable handle
+    isVerified: existing.isVerified, // Server-enforced immutable
+    plan: existing.plan,             // Server-enforced immutable
+    email: existing.email,           // Server-enforced immutable
+    id: existing.id,                 // Server-enforced immutable
+    createdAt: existing.createdAt,   // Server-enforced immutable
+    stats: existing.stats,           // Server-enforced immutable (updated via atomic event endpoints)
+  };
+
+  memoryProfiles[cleanUsername] = updated;
+  await syncProfileToPostgres(updated);
+
+  res.json({ success: true, profile: updated });
+});
+
+// 5b. Update Profile (PATCH - Rejects requests with restricted fields)
+app.patch('/api/profiles/:username', async (req, res) => {
+  const { username } = req.params;
+  const cleanUsername = username.toLowerCase();
+  const existing = memoryProfiles[cleanUsername];
+
+  if (!existing) {
+    return res.status(404).json({ success: false, error: 'Profile not found' });
+  }
+
+  // Server-side ownership verification: Caller must own :username or provide admin credentials
+  const ownership = verifyProfileOwnership(req, existing);
+  if (!ownership.authorized) {
+    return res.status(ownership.status).json({ success: false, error: ownership.error });
+  }
+
+  // Reject with 400 if client explicitly attempts to mutate restricted fields
+  const attemptedForbidden = RESTRICTED_PROFILE_FIELDS.filter(f => req.body[f] !== undefined);
+  if (attemptedForbidden.length > 0) {
+    return res.status(400).json({ 
+      success: false, 
+      error: `Forbidden field(s): Cannot modify restricted field(s) [${attemptedForbidden.join(', ')}]. Verification and plan changes require administrative authorization.` 
+    });
+  }
+
+  const allowedUpdates = filterWhitelistedFields(req.body);
+
+  const updated = {
+    ...existing,
+    ...allowedUpdates,
+    username: cleanUsername,
+    isVerified: existing.isVerified,
+    plan: existing.plan,
+    email: existing.email,
+    id: existing.id,
+    createdAt: existing.createdAt,
+    stats: existing.stats,
   };
 
   memoryProfiles[cleanUsername] = updated;
@@ -379,6 +579,17 @@ app.put('/api/profiles/:username', async (req, res) => {
 app.delete('/api/profiles/:username', async (req, res) => {
   const { username } = req.params;
   const cleanUsername = username.toLowerCase();
+  const existing = memoryProfiles[cleanUsername];
+
+  if (!existing) {
+    return res.status(404).json({ success: false, error: 'Profile not found' });
+  }
+
+  // Server-side ownership verification
+  const ownership = verifyProfileOwnership(req, existing);
+  if (!ownership.authorized) {
+    return res.status(ownership.status).json({ success: false, error: ownership.error });
+  }
 
   delete memoryProfiles[cleanUsername];
 
@@ -394,8 +605,8 @@ app.delete('/api/profiles/:username', async (req, res) => {
   res.json({ success: true, message: `Profile @${cleanUsername} deleted` });
 });
 
-// 7. Atomic Like Endpoint
-app.post('/api/profiles/:username/like', async (req, res) => {
+// 7. Atomic Like Endpoint (Rate-Limited)
+app.post('/api/profiles/:username/like', publicActionLimiter, async (req, res) => {
   const { username } = req.params;
   const { delta = 1 } = req.body;
   const cleanUsername = username.toLowerCase();
@@ -429,8 +640,8 @@ app.post('/api/profiles/:username/like', async (req, res) => {
   res.json({ success: true, likes: profile.stats.likes });
 });
 
-// 8. Atomic View & Analytics Logging Endpoint
-app.post('/api/profiles/:username/view', async (req, res) => {
+// 8. Atomic View & Analytics Logging Endpoint (Rate-Limited)
+app.post('/api/profiles/:username/view', publicActionLimiter, async (req, res) => {
   const { username } = req.params;
   const { isQr = false, referrer } = req.body;
   const cleanUsername = username.toLowerCase();
@@ -468,8 +679,8 @@ app.post('/api/profiles/:username/view', async (req, res) => {
   res.json({ success: true, views: profile.stats.views, qrScans: profile.stats.qrScans });
 });
 
-// 9. Atomic Link Click Endpoint
-app.post('/api/profiles/:username/links/:linkId/click', async (req, res) => {
+// 9. Atomic Link Click Endpoint (Rate-Limited)
+app.post('/api/profiles/:username/links/:linkId/click', publicActionLimiter, async (req, res) => {
   const { username, linkId } = req.params;
   const cleanUsername = username.toLowerCase();
   const profile = memoryProfiles[cleanUsername];
@@ -503,8 +714,57 @@ app.post('/api/profiles/:username/links/:linkId/click', async (req, res) => {
   res.json({ success: true, linkId, clicks: link ? link.clicks : 0 });
 });
 
-// 10. Admin Verification Toggle Endpoint
+// 9b. Atomic Profile Share Endpoint (Rate-Limited, persists shares and calculates activation)
+app.post('/api/profiles/:username/share', publicActionLimiter, async (req, res) => {
+  const { username } = req.params;
+  const { platform = 'clipboard' } = req.body;
+  const cleanUsername = username.toLowerCase();
+  const profile = memoryProfiles[cleanUsername];
+
+  if (!profile) {
+    return res.status(404).json({ success: false, error: 'Profile not found' });
+  }
+
+  if (!profile.stats) {
+    profile.stats = { views: 0, likes: 0, shares: 0, qrScans: 0 };
+  }
+  profile.stats.shares = (profile.stats.shares || 0) + 1;
+
+  // Evaluate North Star activation condition: >= 3 links AND >= 1 share
+  const linksCount = profile.links?.length || 0;
+  const isNowActivated = linksCount >= 3 && profile.stats.shares >= 1;
+
+  if (isPostgresReady && pool) {
+    try {
+      await pool.query(`
+        UPDATE profiles 
+        SET stats = jsonb_set(stats, '{shares}', ($1)::text::jsonb)
+        WHERE username = $2;
+      `, [profile.stats.shares, cleanUsername]);
+
+      await pool.query(`
+        INSERT INTO profile_analytics (username, event_type, referrer)
+        VALUES ($1, 'share', $2);
+      `, [cleanUsername, platform]);
+    } catch (err) {
+      console.error('Error recording share in DB:', err.message);
+    }
+  }
+
+  res.json({ 
+    success: true, 
+    shares: profile.stats.shares, 
+    isActivated: isNowActivated 
+  });
+});
+
+// 10. Admin Verification Toggle Endpoint (Server-Side Authenticated)
 app.post('/api/admin/verify', async (req, res) => {
+  const auth = verifyAdminCaller(req);
+  if (!auth.authorized) {
+    return res.status(auth.status).json({ success: false, error: auth.error });
+  }
+
   const { username, isVerified } = req.body;
   const cleanUsername = (username || '').toLowerCase();
   const profile = memoryProfiles[cleanUsername];
@@ -513,9 +773,9 @@ app.post('/api/admin/verify', async (req, res) => {
     return res.status(404).json({ success: false, error: 'Profile not found' });
   }
 
-  profile.isVerified = isVerified !== undefined ? isVerified : !profile.isVerified;
+  profile.isVerified = isVerified !== undefined ? Boolean(isVerified) : !profile.isVerified;
 
-  if (isPostgresReady) {
+  if (isPostgresReady && pool) {
     try {
       await pool.query(`
         UPDATE profiles 
@@ -530,8 +790,12 @@ app.post('/api/admin/verify', async (req, res) => {
   res.json({ success: true, username: cleanUsername, isVerified: profile.isVerified });
 });
 
-// 11. Admin Overview & Platform KPIs
+// 11. Admin Overview & Platform KPIs (Admin Protected)
 app.get('/api/admin/overview', async (req, res) => {
+  const auth = verifyAdminCaller(req);
+  if (!auth.authorized) {
+    return res.status(auth.status).json({ success: false, error: auth.error });
+  }
   const profiles = Object.values(memoryProfiles);
   const totalViews = profiles.reduce((acc, p) => acc + (p.stats?.views || 0), 0);
   const totalLikes = profiles.reduce((acc, p) => acc + (p.stats?.likes || 0), 0);
@@ -550,15 +814,19 @@ app.get('/api/admin/overview', async (req, res) => {
     },
     superAdmin: 'shreyanshg2005@gmail.com',
     infrastructure: {
-      supabasePooler: isPostgresReady ? 'Active (aws-0-ap-south-1:6543)' : 'Memory Fallback Active',
+      supabasePooler: isPostgresReady ? 'Active' : 'Memory Fallback Active',
       firebase: 'connectly-in.app',
       databaseEngine: 'PostgreSQL 15',
     },
   });
 });
 
-// 12. Admin Full Platform Export Backup
+// 12. Admin Full Platform Export Backup (Admin Protected)
 app.get('/api/admin/export', (req, res) => {
+  const auth = verifyAdminCaller(req);
+  if (!auth.authorized) {
+    return res.status(auth.status).json({ success: false, error: auth.error });
+  }
   res.json({
     exportTimestamp: new Date().toISOString(),
     superAdmin: 'shreyanshg2005@gmail.com',

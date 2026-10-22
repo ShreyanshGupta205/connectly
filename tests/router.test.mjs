@@ -7,11 +7,12 @@ function pathToRoute(pathname) {
   if (!clean || clean === 'landing') return 'landing';
   if (clean === 'dashboard') return 'dashboard';
   if (clean === 'admin') return 'admin';
+  if (clean === 'privacy') return 'privacy';
   if (clean.startsWith('@')) return clean;
   if (clean.startsWith('p/')) return '@' + clean.slice(2);
   if (clean.startsWith('poster/')) return clean;
   if (clean.startsWith('poster-')) return 'poster/' + clean.slice(7);
-  const knownPaths = ['features', 'pricing', 'about', 'api', 'assets'];
+  const knownPaths = ['features', 'pricing', 'about', 'api', 'assets', 'privacy'];
   if (!clean.includes('/') && !knownPaths.includes(clean.toLowerCase())) {
     return '@' + clean;
   }
@@ -23,6 +24,7 @@ function routeToPath(route) {
   if (!clean || clean === 'landing') return '/';
   if (clean === 'dashboard') return '/dashboard';
   if (clean === 'admin') return '/admin';
+  if (clean === 'privacy') return '/privacy';
   if (clean.startsWith('@')) return `/${clean}`;
   if (clean.startsWith('p/')) return `/@${clean.slice(2)}`;
   if (clean.startsWith('poster/')) return `/${clean}`;
@@ -77,6 +79,21 @@ describe('Connectly Path-Based Routing & Legacy Redirects', () => {
     assert.equal(res.route, 'dashboard');
     assert.equal(res.canonicalPath, '/dashboard');
     assert.equal(res.isLegacyHash, false);
+  });
+
+  test('maps /privacy to privacy static route', () => {
+    const res = parseRoute('/privacy', '');
+    assert.equal(res.route, 'privacy');
+    assert.equal(res.canonicalPath, '/privacy');
+    assert.equal(res.isLegacyHash, false);
+    assert.equal(res.targetUsername, undefined);
+  });
+
+  test('detects legacy hash #/privacy and generates redirect to /privacy', () => {
+    const res = parseRoute('/', '#/privacy');
+    assert.equal(res.isLegacyHash, true);
+    assert.equal(res.route, 'privacy');
+    assert.equal(res.canonicalPath, '/privacy');
   });
 
   test('maps /@shreyansh to @shreyansh route', () => {

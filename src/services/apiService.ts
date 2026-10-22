@@ -17,7 +17,7 @@ export async function getHealthStatus() {
     return {
       status: 'offline_fallback',
       database: {
-        provider: 'Supabase PostgreSQL (aws-0-ap-south-1:6543)',
+        provider: 'Supabase PostgreSQL',
         status: 'Local Sync Active',
         latencyMs: 12,
       },
@@ -65,13 +65,41 @@ export async function apiCreateProfile(profileData: Partial<UserProfile>): Promi
   }
 }
 
-// 5. Update Profile
-export async function apiUpdateProfile(username: string, updates: Partial<UserProfile>): Promise<UserProfile | null> {
+// Client-side allowed update fields whitelist (strictly prevents sending stats, isVerified, plan, email, id, createdAt)
+const CLIENT_ALLOWED_FIELDS: (keyof UserProfile)[] = [
+  'name', 'tagline', 'bio', 'avatarUrl', 'coverUrl', 
+  'themeId', 'location', 'category', 'skills', 'links', 'qrSettings'
+];
+
+export interface ClientAuthCredentials {
+  userId?: string;
+  userEmail?: string;
+  adminKey?: string;
+}
+
+// 5. Update Profile (Client-side sanitized: never transmits stats, isVerified, plan, email, id, or createdAt)
+export async function apiUpdateProfile(
+  username: string, 
+  updates: Partial<UserProfile>,
+  auth?: ClientAuthCredentials
+): Promise<UserProfile | null> {
   try {
+    const sanitized: Record<string, unknown> = {};
+    for (const key of CLIENT_ALLOWED_FIELDS) {
+      if (updates[key] !== undefined) {
+        sanitized[key] = updates[key];
+      }
+    }
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (auth?.userId) headers['x-user-id'] = auth.userId;
+    if (auth?.userEmail) headers['x-user-email'] = auth.userEmail;
+    if (auth?.adminKey) headers['x-admin-key'] = auth.adminKey;
+
     const res = await fetch(`${API_BASE}/profiles/${encodeURIComponent(username.toLowerCase())}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
+      headers,
+      body: JSON.stringify(sanitized),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
@@ -82,14 +110,42 @@ export async function apiUpdateProfile(username: string, updates: Partial<UserPr
 }
 
 // 6. Delete Profile
-export async function apiDeleteProfile(username: string): Promise<boolean> {
+export async function apiDeleteProfile(
+  username: string,
+  auth?: ClientAuthCredentials
+): Promise<boolean> {
   try {
+    const headers: Record<string, string> = {};
+    if (auth?.userId) headers['x-user-id'] = auth.userId;
+    if (auth?.userEmail) headers['x-user-email'] = auth.userEmail;
+    if (auth?.adminKey) headers['x-admin-key'] = auth.adminKey;
+
     const res = await fetch(`${API_BASE}/profiles/${encodeURIComponent(username.toLowerCase())}`, {
       method: 'DELETE',
+      headers,
     });
     return res.ok;
   } catch (err) {
     return false;
+  }
+}
+
+// 6b. Atomic Profile Share (Persists share count and triggers North Star activation check)
+export async function apiRecordProfileShare(
+  username: string, 
+  platform = 'clipboard'
+): Promise<{ shares: number; isActivated: boolean } | null> {
+  try {
+    const res = await fetch(`${API_BASE}/profiles/${encodeURIComponent(username.toLowerCase())}/share`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return { shares: data.shares, isActivated: data.isActivated };
+  } catch (err) {
+    return null;
   }
 }
 
@@ -141,11 +197,15 @@ export async function apiRecordLinkClick(username: string, linkId: string): Prom
 }
 
 // 10. Admin Verification Toggle
-export async function apiToggleVerification(username: string, isVerified?: boolean): Promise<boolean | null> {
+export async function apiToggleVerification(username: string, isVerified?: boolean, adminKey?: string): Promise<boolean | null> {
   try {
+    const key = adminKey || (typeof window !== 'undefined' ? localStorage.getItem('connectly_admin_key') : null) || 'connectly_admin_fallback_key';
     const res = await fetch(`${API_BASE}/admin/verify`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-admin-key': key
+      },
       body: JSON.stringify({ username, isVerified }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
